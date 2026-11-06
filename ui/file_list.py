@@ -320,12 +320,16 @@ class FileDropListWidget(QListWidget):
             for u in urls:
                 p = u.toLocalFile()
                 if os.path.isfile(p):
+                    if os.path.basename(p).startswith("~$"):
+                        continue
                     ext = os.path.splitext(p)[1].lower()
                     if ext in [".doc", ".docx", ".pdf"]:
                         paths.append(p)
                 elif os.path.isdir(p):
                     for root, _, files in os.walk(p):
                         for f in files:
+                            if f.startswith("~$"):
+                                continue
                             ext = os.path.splitext(f)[1].lower()
                             if ext in [".doc", ".docx", ".pdf"]:
                                 paths.append(os.path.join(root, f))
@@ -460,6 +464,7 @@ class FileListPanel(QFrame):
         Reconstructs item widgets from self.file_paths.
         Guarantees that widgets are never lost and indices are always 1, 2, 3...
         """
+        self.list_widget.blockSignals(True)
         self.list_widget.clear()
         for idx, path in enumerate(self.file_paths, start=1):
             item = QListWidgetItem()
@@ -491,20 +496,27 @@ class FileListPanel(QFrame):
             target_row = 0
 
         self.list_widget.setCurrentRow(target_row)
+        self.list_widget.blockSignals(False)
+        self._refresh_card_highlights()
+
         if target_row >= 0 and target_row < len(self.file_paths):
             self.file_selected.emit(self.file_paths[target_row])
-        self._refresh_card_highlights()
 
     def add_files(self, paths: list[str]):
         added = False
+        newly_added = []
         for p in paths:
+            if os.path.basename(p).startswith("~$"):
+                continue
             norm_p = os.path.normpath(p)
             if norm_p not in self.file_paths:
                 self.file_paths.append(norm_p)
+                newly_added.append(norm_p)
                 added = True
 
         if added:
-            self._sync_items(selected_path=paths[-1] if paths else None)
+            sel = newly_added[0] if newly_added else None
+            self._sync_items(selected_path=sel)
             self.file_list_changed.emit()
 
     def _open_file_dialog(self):

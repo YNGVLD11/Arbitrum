@@ -1,7 +1,7 @@
 import os
 import tempfile
 import hashlib
-from PySide6.QtCore import QSize, Signal, QThread
+from PySide6.QtCore import QSize, Signal, QThread, QMutex, QWaitCondition, QMutexLocker
 from PySide6.QtGui import QPixmap
 from PySide6.QtPdf import QPdfDocument
 from core.converter import convert_word_to_pdf
@@ -73,24 +73,53 @@ class DocumentRenderer:
         return QPixmap()
 
 
-class ThumbnailWorker(QThread):
+class PreviewWorker(QThread):
     """
-    Background worker to convert Word documents to cached PDF without freezing the UI.
-    Emits (file_path, page_count) when ready.
+    Persistent background worker for generating preview PDFs.
+    Processes conversion requests sequentially without spawning multiple threads
+    or destroying threads while running.
     """
     conversion_ready = Signal(str, int)  # file_path, page_count
-    error = Signal(str, str)
+    error = Signal(str, str)  # file_path, error_msg
 
-    def __init__(self, file_path: str):
-        super().__init__()
-        self.file_path = file_path
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._mutex = QMutex()
+        self._cond = QWaitCondition()
+        self._pending_path = None
+        self._is_running = True
+
+    def request_conversion(self, file_path: str):
+        with QMutexLocker(self._mutex):
+            self._pending_path = file_path
+            self._cond.wakeOne()
+
+    def stop(self):
+        with QMutexLocker(self._mutex):
+            self._is_running = False
+            self._pending_path = None
+            self._cond.wakeOne()
+        self.wait(5000)
 
     def run(self):
-        try:
-            renderer = DocumentRenderer()
-            if renderer.load(self.file_path):
-                self.conversion_ready.emit(self.file_path, renderer.page_count)
-            else:
-                self.error.emit(self.file_path, "Не удалось преобразовать документ")
-        except Exception as e:
-            self.error.emit(self.file_path, str(e))
+        renderer = DocumentRenderer()
+        while True:
+            target_file = None
+            with QMutexLocker(self._mutex):
+                while self._is_running and not self._pending_path:
+                    self._cond.wait(self._mutex)
+                if not self._is_running:
+                    break
+                target_file = self._pending_path
+                self._pending_path = None
+
+            if not target_file:
+                continue
+
+            try:
+                if renderer.load(target_file):
+                    self.conversion_ready.emit(target_file, renderer.page_count)
+                else:
+                    self.error.emit(target_file, "Не удалось открыть документ")
+            except Exception as e:
+                self.error.emit(target_file, str(e))

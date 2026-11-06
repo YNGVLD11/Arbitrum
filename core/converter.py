@@ -1,6 +1,7 @@
 import os
 import tempfile
 import shutil
+import threading
 import pypdf
 
 # Dimensions for A4 in points (297 mm x 210 mm)
@@ -8,49 +9,61 @@ A4_LANDSCAPE_W = 841.89
 A4_LANDSCAPE_H = 595.28
 A4_HALF_W = A4_LANDSCAPE_W / 2.0
 
+# Global lock to serialize Microsoft Word COM automation across all threads
+WORD_LOCK = threading.RLock()
+
 
 def convert_word_to_pdf(doc_path: str, output_pdf_path: str):
     """
     Converts .doc or .docx to PDF using Microsoft Word COM automation.
-    Thread-safe with pythoncom initialization.
+    Thread-safe with global lock and pythoncom initialization.
+    Guarantees clean process termination even on errors.
     """
     import pythoncom
     import win32com.client
 
-    pythoncom.CoInitialize()
-    word = None
-    doc = None
-    try:
-        word = win32com.client.DispatchEx("Word.Application")
-        word.Visible = False
-        word.DisplayAlerts = 0  # wdAlertsNone
-
-        abs_doc_path = os.path.abspath(doc_path)
-        abs_pdf_path = os.path.abspath(output_pdf_path)
-
-        doc = word.Documents.Open(
-            abs_doc_path,
-            ReadOnly=True,
-            ConfirmConversions=False,
-            Visible=False,
-            AddToRecentFiles=False
-        )
-        # 17 = wdFormatPDF
-        doc.SaveAs2(abs_pdf_path, FileFormat=17)
-    finally:
-        if doc is not None:
+    with WORD_LOCK:
+        pythoncom.CoInitialize()
+        word = None
+        doc = None
+        try:
+            word = win32com.client.DispatchEx("Word.Application")
+            word.Visible = False
+            word.DisplayAlerts = 0  # wdAlertsNone
             try:
-                doc.Close(SaveChanges=0)  # wdDoNotSaveChanges
+                word.ScreenUpdating = False
             except Exception:
                 pass
-            del doc
-        if word is not None:
+
+            abs_doc_path = os.path.abspath(doc_path)
+            abs_pdf_path = os.path.abspath(output_pdf_path)
+
+            doc = word.Documents.Open(
+                abs_doc_path,
+                ReadOnly=True,
+                ConfirmConversions=False,
+                Visible=False,
+                AddToRecentFiles=False
+            )
+            # 17 = wdFormatPDF
+            doc.SaveAs2(abs_pdf_path, FileFormat=17)
+        finally:
+            if doc is not None:
+                try:
+                    doc.Close(SaveChanges=0)  # wdDoNotSaveChanges
+                except Exception:
+                    pass
+                del doc
+            if word is not None:
+                try:
+                    word.Quit(SaveChanges=0)
+                except Exception:
+                    pass
+                del word
             try:
-                word.Quit(SaveChanges=0)
+                pythoncom.CoUninitialize()
             except Exception:
                 pass
-            del word
-        pythoncom.CoUninitialize()
 
 
 def add_sheet_2up(writer: pypdf.PdfWriter, left_page=None, right_page=None):
@@ -99,109 +112,108 @@ def build_arbitr_report(
         if progress_callback:
             progress_callback(percent, msg)
 
+    def check_cancel():
+        if is_cancelled and is_cancelled():
+            raise InterruptedError("Операция отменена пользователем.")
+
+    total_files = len(file_paths)
+    if total_files == 0:
+        raise ValueError("Список файлов пуст.")
+
     temp_dir = tempfile.mkdtemp(prefix="arbitr_build_")
     try:
-        total_files = len(file_paths)
-        if total_files == 0:
-            raise ValueError("Список файлов для сборки пуст.")
+        report(5, "Подготовка к конвертации документов...")
+        check_cancel()
 
-        # Step 1: Convert all non-PDF files to PDF
-        pdf_docs = []
-        for idx, fpath in enumerate(file_paths):
-            if is_cancelled and is_cancelled():
-                raise InterruptedError("Операция отменена пользователем.")
+        # Step 1: Convert Word documents to intermediate PDF
+        intermediate_pdfs = []
+        for i, path in enumerate(file_paths):
+            check_cancel()
+            ext = os.path.splitext(path)[1].lower()
+            fname = os.path.basename(path)
 
-            fname = os.path.basename(fpath)
-            pct = int((idx / total_files) * 50)
-            report(pct, f"Подготовка файла {idx + 1} из {total_files}: {fname}")
-
-            ext = os.path.splitext(fpath)[1].lower()
-            if ext == ".pdf":
-                pdf_docs.append(fpath)
-            elif ext in [".doc", ".docx"]:
+            pct = 10 + int((i / total_files) * 45)
+            if ext in [".doc", ".docx"]:
                 report(pct, f"Конвертация Word в PDF: {fname}...")
-                temp_pdf = os.path.join(temp_dir, f"converted_{idx}_{fname}.pdf")
-                convert_word_to_pdf(fpath, temp_pdf)
-                pdf_docs.append(temp_pdf)
+                out_pdf = os.path.join(temp_dir, f"converted_{i}.pdf")
+                convert_word_to_pdf(path, out_pdf)
+                intermediate_pdfs.append(out_pdf)
+            elif ext == ".pdf":
+                report(pct, f"Чтение PDF: {fname}...")
+                intermediate_pdfs.append(path)
             else:
-                raise ValueError(f"Неподдерживаемый формат файла: {fname} ({ext})")
+                raise ValueError(f"Неподдерживаемый формат файла: {path}")
 
-        report(55, "Чтение страниц и определение ориентации...")
+        check_cancel()
+        report(60, "Анализ страниц и компоновка формата A4...")
 
-        # Step 2: Read pages from all PDFs and separate/group by orientation
-        # We preserve the user's document sequence
-        doc_pages_list = []
-        total_source_pages = 0
-        for p_pdf in pdf_docs:
-            reader = pypdf.PdfReader(p_pdf)
-            pages = list(reader.pages)
-            doc_pages_list.append(pages)
-            total_source_pages += len(pages)
+        # Step 2: Read all pages from intermediate PDFs
+        collected_pages = []
+        for pdf_path in intermediate_pdfs:
+            check_cancel()
+            reader = pypdf.PdfReader(pdf_path)
+            for page in reader.pages:
+                collected_pages.append(page)
 
-        report(65, "Компоновка страниц в макет 2-на-лист (A4 Альбомный)...")
+        total_input_pages = len(collected_pages)
+        if total_input_pages == 0:
+            raise ValueError("Исходные документы не содержат страниц.")
 
+        # Step 3: Layout pages 2-up into A4 Landscape writer
         writer = pypdf.PdfWriter()
+        sheet_count = 0
+        idx = 0
 
-        if new_sheet_for_landscape:
-            # Group contiguous pages by orientation (portrait vs landscape)
-            # within the specified document order
-            all_groups = []
-            current_group = []
-            current_is_landscape = None
+        while idx < total_input_pages:
+            check_cancel()
+            pct = 65 + int((idx / total_input_pages) * 25)
+            report(pct, f"Размещение страниц на листах ({idx + 1} из {total_input_pages})...")
 
-            for doc_pages in doc_pages_list:
-                for page in doc_pages:
-                    w = float(page.mediabox.width)
-                    h = float(page.mediabox.height)
-                    is_land = w > h
+            page1 = collected_pages[idx]
+            pw1 = float(page1.mediabox.width)
+            ph1 = float(page1.mediabox.height)
+            is_land1 = pw1 > ph1
 
-                    if current_is_landscape is None:
-                        current_is_landscape = is_land
-                        current_group.append(page)
-                    elif current_is_landscape == is_land:
-                        current_group.append(page)
-                    else:
-                        all_groups.append((current_is_landscape, current_group))
-                        current_group = [page]
-                        current_is_landscape = is_land
+            if is_land1:
+                # Landscape page: Center alone on a full A4 landscape sheet
+                add_sheet_2up(writer, left_page=page1, right_page=None)
+                sheet_count += 1
+                idx += 1
+            else:
+                # Portrait page: Pair with next page if next page is also portrait
+                page2 = None
+                if idx + 1 < total_input_pages:
+                    next_p = collected_pages[idx + 1]
+                    pw2 = float(next_p.mediabox.width)
+                    ph2 = float(next_p.mediabox.height)
+                    is_land2 = pw2 > ph2
 
-            if current_group:
-                all_groups.append((current_is_landscape, current_group))
+                    if not is_land2 or not new_sheet_for_landscape:
+                        page2 = next_p
+                        idx += 1
 
-            total_groups = len(all_groups)
-            for g_idx, (is_land, group_pages) in enumerate(all_groups):
-                if is_cancelled and is_cancelled():
-                    raise InterruptedError("Операция отменена пользователем.")
+                add_sheet_2up(writer, left_page=page1, right_page=page2)
+                sheet_count += 1
+                idx += 1
 
-                group_type = "альбомного" if is_land else "книжного"
-                report(70 + int((g_idx / total_groups) * 20), f"Сборка секции {group_type} формата...")
+        check_cancel()
+        report(95, "Сохранение итогового PDF-файла...")
 
-                for i in range(0, len(group_pages), 2):
-                    p_left = group_pages[i]
-                    p_right = group_pages[i + 1] if i + 1 < len(group_pages) else None
-                    add_sheet_2up(writer, p_left, p_right)
-        else:
-            # Flat 2-up without section breaks
-            all_pages = [page for doc_pages in doc_pages_list for page in doc_pages]
-            for i in range(0, len(all_pages), 2):
-                if is_cancelled and is_cancelled():
-                    raise InterruptedError("Операция отменена пользователем.")
-                p_left = all_pages[i]
-                p_right = all_pages[i + 1] if i + 1 < len(all_pages) else None
-                add_sheet_2up(writer, p_left, p_right)
-
-        report(92, "Запись итогового PDF-документа...")
+        # Step 4: Write to output destination
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
         with open(output_path, "wb") as f_out:
             writer.write(f_out)
 
-        report(100, "Сборка успешно завершена!")
+        report(100, "Сборка отчёта успешно завершена!")
 
         return {
+            "success": True,
             "output_path": output_path,
-            "total_sheets": len(writer.pages),
-            "total_source_pages": total_source_pages,
-            "file_size": os.path.getsize(output_path)
+            "total_input_files": total_files,
+            "total_input_pages": total_input_pages,
+            "total_sheets": sheet_count,
+            "output_size_bytes": os.path.getsize(output_path)
         }
+
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)

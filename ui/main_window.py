@@ -133,6 +133,11 @@ class MainWindow(QMainWindow):
 
         self._update_build_button_state()
 
+    def closeEvent(self, event):
+        if hasattr(self, "preview_panel") and hasattr(self.preview_panel, "preview_worker"):
+            self.preview_panel.preview_worker.stop()
+        super().closeEvent(event)
+
     def mousePressEvent(self, event):
         pos = event.position().toPoint()
         child = self.childAt(pos)

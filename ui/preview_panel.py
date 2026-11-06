@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QFrame, QGraphicsDropShadowEffect
 )
 from PySide6.QtGui import QPixmap, QColor
-from core.preview import DocumentRenderer, ThumbnailWorker, is_cached_pdf_ready
+from core.preview import DocumentRenderer, PreviewWorker, is_cached_pdf_ready
 from ui.themes import THEME_FEMININE
 
 
@@ -26,7 +26,12 @@ class DocumentPreviewPanel(QFrame):
         self.current_page = 0
         self.total_pages = 0
         self.zoom_factor = 1.0
-        self.worker = None
+
+        # Persistent background worker for preview conversions
+        self.preview_worker = PreviewWorker(self)
+        self.preview_worker.conversion_ready.connect(self._on_conversion_ready)
+        self.preview_worker.error.connect(self._on_worker_error)
+        self.preview_worker.start()
 
         self._init_ui()
 
@@ -172,10 +177,6 @@ class DocumentPreviewPanel(QFrame):
             self._render_current_page()
 
     def set_document(self, file_path: str):
-        if self.worker and self.worker.isRunning():
-            self.worker.quit()
-            self.worker.wait(300)
-
         if not file_path or not os.path.exists(file_path):
             self.clear_preview()
             return
@@ -202,12 +203,9 @@ class DocumentPreviewPanel(QFrame):
                     self._render_current_page()
                     return
 
-            # If not yet cached, run conversion in background worker
+            # If not yet cached, post request to persistent background worker
             self._show_loading("⏳ Подготовка предпросмотра Word...")
-            self.worker = ThumbnailWorker(file_path)
-            self.worker.conversion_ready.connect(self._on_conversion_ready)
-            self.worker.error.connect(self._on_worker_error)
-            self.worker.start()
+            self.preview_worker.request_conversion(file_path)
 
     def _show_loading(self, text: str):
         self.total_pages = 0
@@ -356,16 +354,11 @@ class DocumentPreviewPanel(QFrame):
         super().mousePressEvent(event)
 
     def closeEvent(self, event):
-        if self.worker and self.worker.isRunning():
-            self.worker.quit()
-            self.worker.wait(300)
+        if hasattr(self, "preview_worker"):
+            self.preview_worker.stop()
         super().closeEvent(event)
 
     def clear_preview(self):
-        if self.worker and self.worker.isRunning():
-            self.worker.quit()
-            self.worker.wait(300)
-
         self.current_file_path = None
         self.total_pages = 0
         self.current_page = 0

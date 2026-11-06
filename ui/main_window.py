@@ -120,7 +120,7 @@ class MainWindow(QMainWindow):
 
         # Central Splitter (List 2/3 on Left, Preview 1/3 on Right)
         self.splitter = QSplitter(Qt.Horizontal)
-        self.splitter.setHandleWidth(8)
+        self.splitter.setHandleWidth(16)
         self.splitter.setChildrenCollapsible(False)
 
         # Left: File List Panel

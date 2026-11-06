@@ -185,7 +185,7 @@ QGroupBox {{
     border: 1px solid #BAE6FD;
     border-radius: 10px;
     margin-top: 16px;
-    padding-top: 12px;
+    padding-top: 0px;
     padding-bottom: 0px;
     padding-left: 0px;
     padding-right: 0px;
@@ -203,11 +203,11 @@ QGroupBox::title {{
     color: #0369A1;
 }}
 
-/* Splitter - clearly visible solid divider handle */
+/* Splitter - comfortable gap with centered thin divider line */
 QSplitter::handle:horizontal {{
     background-color: #94A3B8;
-    border: none;
-    border-radius: 3px;
+    margin: 6px 7px;
+    border-radius: 1px;
 }}
 
 QSplitter::handle:horizontal:hover {{
@@ -683,7 +683,7 @@ QGroupBox {{
     border: 1px solid #FFCCD5;
     border-radius: 10px;
     margin-top: 16px;
-    padding-top: 12px;
+    padding-top: 0px;
     padding-bottom: 0px;
     padding-left: 0px;
     padding-right: 0px;
@@ -701,11 +701,11 @@ QGroupBox::title {{
     color: #800F2F;
 }}
 
-/* Splitter - clearly visible rose divider handle */
+/* Splitter - comfortable gap with soft rose divider line */
 QSplitter::handle:horizontal {{
-    background-color: #F497A9;
-    border: none;
-    border-radius: 3px;
+    background-color: #FB7185;
+    margin: 6px 7px;
+    border-radius: 1px;
 }}
 
 QSplitter::handle:horizontal:hover {{

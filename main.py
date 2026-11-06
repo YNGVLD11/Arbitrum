@@ -26,7 +26,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("ArbitrReportBuilder")
-    app.setApplicationDisplayName("Мастер сборки отчета АУ")
+    app.setApplicationDisplayName("Арбитум")
     app.setOrganizationName("ArbitrTools")
 
     # Set application icon (inherited by all windows and taskbar)

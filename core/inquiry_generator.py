@@ -103,9 +103,9 @@ def generate_single_inquiry(
         pass_block = ""
 
     # Manager
-    manager_fio = data.get("manager_fio", "Гусарова Ксения Андреевна").strip()
-    manager_inn = data.get("manager_inn", "380470431942").strip()
-    manager_snils = data.get("manager_snils", "136-556-599 95").strip()
+    manager_fio = data.get("manager_fio", "").strip()
+    manager_inn = data.get("manager_inn", "").strip()
+    manager_snils = data.get("manager_snils", "").strip()
     manager_sro = data.get("manager_sro", 'САМРО "Ассоциация антикризисных управляющих"').strip()
     manager_sro_ogrn = data.get("manager_sro_ogrn", "1026300003751").strip()
     manager_sro_inn = data.get("manager_sro_inn", "6315944042").strip()
@@ -315,19 +315,19 @@ def generate_single_inquiry(
     # B) в_ССП_РИ.docx
     if "в_ССП" in base_name:
         for p in doc.paragraphs:
-            if "переданных Бурлаковой" in p.text or "переданных Базаровым" in p.text:
+            if "переданных " in p.text and "для исполнения" in p.text:
                 debtor_instr = data.get("debtor_fio_instr", "") or debtor_fio
-                p.text = re.sub(r'переданных [А-Яа-яЁё\s]+? для исполнения', f'переданных {debtor_instr} для исполнения', p.text)
-            if "в отношении Бурлаковой" in p.text or "в отношении Базарова" in p.text:
-                p.text = re.sub(r'в отношении [А-Яа-яЁё\s]+?, и направить', f'в отношении {debtor_fio_gen}, и направить', p.text)
+                p.text = re.sub(r'переданных [^для]+? для исполнения', f'переданных {debtor_instr} для исполнения', p.text)
+            if "в отношении " in p.text and "и направить" in p.text:
+                p.text = re.sub(r'в отношении [^и]+?, и направить', f'в отношении {debtor_fio_gen}, и направить', p.text)
 
     # C) запрос в УВМ.docx
     if "в УВМ" in base_name:
         for p in doc.paragraphs:
             if "являются кредиторами" in p.text:
                 short_fio = to_short_fio(debtor_fio)
-                p.text = re.sub(r'являются кредиторами [А-Яа-яЁё\s]+?\.', f'являются кредиторами {debtor_fio_gen}.', p.text)
-                p.text = re.sub(r'в отношении [А-Яа-яЁё\.\s]+?$', f'в отношении {short_fio}', p.text)
+                p.text = re.sub(r'являются кредиторами [^\.]*?\.', f'являются кредиторами {debtor_fio_gen}.', p.text)
+                p.text = re.sub(r'в отношении [^\.]*?$', f'в отношении {short_fio}', p.text)
 
     # D) в_ЕГРН_(сокращенный)_должник_супруг_РИ.docx
     if "ЕГРН" in base_name:
@@ -362,9 +362,9 @@ def generate_single_inquiry(
             for row in table.rows:
                 for cell in row.cells:
                     ct = cell.text
-                    if "Бурлакова Ирина Сергеевна" in ct or "Базаров Николай Николаевич" in ct:
+                    if "{{DEBTOR_FIO}}" in ct or "физическое лицо:" in ct and "1.1." in ct:
                         cell.text = debtor_egrn_block
-                    elif "Бурлаков Сергей Михайлович" in ct or "Базарова Татьяна Алексеевна" in ct:
+                    elif "{{SPOUSE_FIO}}" in ct:
                         cell.text = spouse_egrn_block
                     elif "Решение Арбитражного суда" in ct:
                         cell.text = court_ref_str
@@ -374,12 +374,10 @@ def generate_single_inquiry(
         for row in table.rows:
             for cell in row.cells:
                 ct = cell.text
-                if any(k in ct for k in ["Бурлаковой Ирины Сергеевны", "Базарова Николая Николаевича", "Бурлакова Ирина", "Базаров Николай"]):
+                if any(k in ct for k in ["{{DEBTOR_FIO_GEN}}", "{{DEBTOR_FIO}}", "финансовый управляющий"]):
                     replace_in_cell(cell, {
-                        "Бурлаковой Ирины Сергеевны": debtor_fio_gen,
-                        "Базарова Николая Николаевича": debtor_fio_gen,
-                        "Бурлакова Ирина Сергеевна": debtor_fio,
-                        "Базаров Николай Николаевич": debtor_fio,
+                        "{{DEBTOR_FIO_GEN}}": debtor_fio_gen,
+                        "{{DEBTOR_FIO}}": debtor_fio,
                     })
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)

@@ -166,9 +166,9 @@ def parse_court_decision(file_path: str) -> Dict[str, Any]:
         "spouse_passport_date": "",
         "spouse_passport_code": "",
         "marriage_date": "",
-        "manager_fio": "Гусарова Ксения Андреевна",
-        "manager_inn": "380470431942",
-        "manager_snils": "136-556-599 95",
+        "manager_fio": "",
+        "manager_inn": "",
+        "manager_snils": "",
         "manager_sro": 'САМРО "Ассоциация антикризисных управляющих"',
         "manager_sro_ogrn": "1026300003751",
         "manager_sro_inn": "6315944042",
@@ -194,7 +194,7 @@ def parse_court_decision(file_path: str) -> Dict[str, Any]:
         res["decision_date"] = parse_russian_date(m_date.group(1))
 
     # 4. Debtor Info
-    # e.g.: дело по заявлению должника – Базарова Николая Николаевича (09.10.1970 г.р., ...)
+    # e.g.: дело по заявлению должника – Иванов Иван Иванович (01.01.1980 г.р., ...)
     m_debtor = re.search(r'дело по заявлению должника\s*[\-–—]\s*([А-Яа-яЁё\s]+?)\s*\((.*?)\)', norm, re.DOTALL)
     if not m_debtor:
         # fallback: в отношении гражданина-должника ...
@@ -252,7 +252,7 @@ def parse_court_decision(file_path: str) -> Dict[str, Any]:
         res["debtor_passport_code"] = m_pass_all.group(5)
 
     # 6. Spouse Information
-    # "Должник состоит в браке с Базаровой Татьяной Алексеевной (30.04.1971 г.р.)"
+    # "Должник состоит в браке с Ивановой Анной Сергеевной (01.01.1982 г.р.)"
     m_spouse = re.search(r'Должник состоит в браке\s*с\s*([А-Яа-яЁё\s]+?)\s*\((.*?)\)', norm, re.IGNORECASE)
     if m_spouse:
         res["spouse_status"] = "married"

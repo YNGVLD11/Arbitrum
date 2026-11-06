@@ -89,12 +89,6 @@ class Sidebar(QFrame):
         self.btn_settings.clicked.connect(self.settings_clicked.emit)
         layout.addWidget(self.btn_settings)
 
-        # Version label
-        ver_lbl = QLabel("Версия 1.1.0")
-        ver_lbl.setAlignment(Qt.AlignCenter)
-        ver_lbl.setObjectName("sidebarVersion")
-        layout.addWidget(ver_lbl)
-
         self._update_nav_selection()
 
     def set_current_page(self, page_index: int):

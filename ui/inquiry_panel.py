@@ -1,7 +1,7 @@
 import os
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QLineEdit, QCheckBox, QRadioButton, QButtonGroup, QScrollArea,
     QFrame, QFileDialog, QMessageBox, QProgressBar, QToolTip
 )
@@ -50,7 +50,7 @@ class DropArea(QFrame):
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setAlignment(Qt.AlignCenter)
 
-        self.label = QLabel("Перетащите решение или определение суда (PDF, DOCX)\nили нажмите для выбора файла")
+        self.label = QLabel("Перетащите решение или определение суда в формате PDF или Word\nили нажмите для выбора файла")
         self.label.setAlignment(Qt.AlignCenter)
         self.label.setObjectName("dropAreaText")
         self.label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
@@ -155,8 +155,8 @@ class InquiryGeneratorPanel(QWidget):
         form_layout.addWidget(self._make_section_header("Дело и суд"))
         
         row_court = QHBoxLayout()
-        self.edit_case_no = self._make_input("Номер дела (напр. А45-10470/2026)", "Номер арбитражного дела")
-        self.edit_dec_date = self._make_input("Дата решения (напр. 07.05.2026)", "Дата судебного акта / решения")
+        self.edit_case_no = self._make_input("Номер дела", "Номер арбитражного дела")
+        self.edit_dec_date = self._make_input("Дата решения суда", "Дата судебного акта / решения")
         row_court.addWidget(self.edit_case_no, stretch=3)
         row_court.addWidget(self.edit_dec_date, stretch=2)
         form_layout.addLayout(row_court)
@@ -169,15 +169,15 @@ class InquiryGeneratorPanel(QWidget):
         form_layout.addWidget(self._make_section_header("Данные должника"))
         
         row_fio = QHBoxLayout()
-        self.edit_debtor_fio = self._make_input("ФИО должника (Именительный падеж)", "ФИО должника (в именительном падеже)")
+        self.edit_debtor_fio = self._make_input("ФИО должника", "ФИО должника (в именительном падеже)")
         self.edit_debtor_fio.textChanged.connect(self._on_debtor_name_changed)
-        self.edit_debtor_fio_gen = self._make_input("ФИО должника (Родительный падеж)", "ФИО должника (в родительном падеже: кого?)")
+        self.edit_debtor_fio_gen = self._make_input("ФИО должника в родительном падеже", "ФИО должника (в родительном падеже: кого?)")
         row_fio.addWidget(self.edit_debtor_fio)
         row_fio.addWidget(self.edit_debtor_fio_gen)
         form_layout.addLayout(row_fio)
 
         row_debtor_b = QHBoxLayout()
-        self.edit_debtor_birth = self._make_input("Дата рождения (ДД.ММ.ГГГГ)", "Дата рождения должника")
+        self.edit_debtor_birth = self._make_input("Дата рождения", "Дата рождения должника")
         self.edit_debtor_place = self._make_input("Место рождения", "Место рождения должника")
         row_debtor_b.addWidget(self.edit_debtor_birth, stretch=2)
         row_debtor_b.addWidget(self.edit_debtor_place, stretch=3)
@@ -194,8 +194,8 @@ class InquiryGeneratorPanel(QWidget):
         form_layout.addWidget(self.edit_debtor_addr)
 
         row_pass1 = QHBoxLayout()
-        self.edit_pass_series = self._make_input("Паспорт серия", "Серия паспорта должника (4 цифры)")
-        self.edit_pass_num = self._make_input("Паспорт номер", "Номер паспорта должника (6 цифр)")
+        self.edit_pass_series = self._make_input("Паспорт серия", "Серия паспорта должника")
+        self.edit_pass_num = self._make_input("Паспорт номер", "Номер паспорта должника")
         self.edit_pass_date = self._make_input("Дата выдачи", "Дата выдачи паспорта должника")
         self.edit_pass_code = self._make_input("Код подразделения", "Код подразделения органа, выдавшего паспорт")
         row_pass1.addWidget(self.edit_pass_series)
@@ -215,7 +215,7 @@ class InquiryGeneratorPanel(QWidget):
         spouse_status_layout.setSpacing(14)
         self.rb_not_married = QRadioButton("Не состоит в браке")
         self.rb_married = QRadioButton("В браке")
-        self.rb_divorced = QRadioButton("В разводе (< 3 лет)")
+        self.rb_divorced = QRadioButton("В разводе менее 3 лет")
         self.rb_not_married.setChecked(True)
 
         self.spouse_group = QButtonGroup(self)
@@ -237,30 +237,30 @@ class InquiryGeneratorPanel(QWidget):
         spouse_cont_layout.setSpacing(6)
 
         row_sp_fio = QHBoxLayout()
-        self.edit_spouse_fio = self._make_input("ФИО супруга(и)", "ФИО супруга(и) (в именительном падеже)")
+        self.edit_spouse_fio = self._make_input("ФИО супруга", "ФИО супруга")
         self.edit_spouse_fio.textChanged.connect(self._on_spouse_name_changed)
-        self.edit_spouse_fio_instr = self._make_input("ФИО супруга (Творительный падеж: с кем?)", "ФИО супруга в творительном падеже (с кем: с супругом / супругой)")
+        self.edit_spouse_fio_instr = self._make_input("ФИО супруга в творительном падеже", "ФИО супруга в творительном падеже")
         row_sp_fio.addWidget(self.edit_spouse_fio)
         row_sp_fio.addWidget(self.edit_spouse_fio_instr)
         spouse_cont_layout.addLayout(row_sp_fio)
 
         row_sp_b = QHBoxLayout()
-        self.edit_spouse_birth = self._make_input("Дата рождения супруга(и)", "Дата рождения супруга(и)")
-        self.edit_spouse_place = self._make_input("Место рождения супруга(и)", "Место рождения супруга(и)")
-        self.edit_marriage_date = self._make_input("Дата заключения/расторжения брака", "Дата регистрации или прекращения брака")
+        self.edit_spouse_birth = self._make_input("Дата рождения супруга", "Дата рождения супруга")
+        self.edit_spouse_place = self._make_input("Место рождения супруга", "Место рождения супруга")
+        self.edit_marriage_date = self._make_input("Дата заключения или расторжения брака", "Дата регистрации или прекращения брака")
         row_sp_b.addWidget(self.edit_spouse_birth)
         row_sp_b.addWidget(self.edit_spouse_place)
         row_sp_b.addWidget(self.edit_marriage_date)
         spouse_cont_layout.addLayout(row_sp_b)
 
         row_sp_ids = QHBoxLayout()
-        self.edit_spouse_snils = self._make_input("СНИЛС супруга(и)", "СНИЛС супруга(и)")
-        self.edit_spouse_inn = self._make_input("ИНН супруга(и)", "ИНН супруга(и)")
+        self.edit_spouse_snils = self._make_input("СНИЛС супруга", "СНИЛС супруга")
+        self.edit_spouse_inn = self._make_input("ИНН супруга", "ИНН супруга")
         row_sp_ids.addWidget(self.edit_spouse_snils)
         row_sp_ids.addWidget(self.edit_spouse_inn)
         spouse_cont_layout.addLayout(row_sp_ids)
 
-        self.edit_spouse_addr = self._make_input("Адрес регистрации супруга(и) (если совпадает, можно оставить пустым)", "Адрес регистрации супруга(и)")
+        self.edit_spouse_addr = self._make_input("Адрес регистрации супруга", "Адрес регистрации супруга")
         spouse_cont_layout.addWidget(self.edit_spouse_addr)
 
         form_layout.addWidget(self.spouse_container)
@@ -342,19 +342,23 @@ class InquiryGeneratorPanel(QWidget):
         right_scroll.setObjectName("agenciesScrollArea")
 
         agencies_widget = QWidget()
-        agencies_layout = QVBoxLayout(agencies_widget)
-        agencies_layout.setContentsMargins(4, 4, 4, 4)
-        agencies_layout.setSpacing(8)
+        agencies_grid = QGridLayout(agencies_widget)
+        agencies_grid.setContentsMargins(4, 4, 4, 4)
+        agencies_grid.setHorizontalSpacing(14)
+        agencies_grid.setVerticalSpacing(10)
 
+        mid = (len(TEMPLATES_CONFIG) + 1) // 2
         self.checkboxes = {}
-        for item in TEMPLATES_CONFIG:
+        for i, item in enumerate(TEMPLATES_CONFIG):
             cb = QCheckBox(item["name"])
             cb.setChecked(True)
             cb.stateChanged.connect(self._update_agencies_count)
             self.checkboxes[item["id"]] = cb
-            agencies_layout.addWidget(cb)
+            row = i if i < mid else i - mid
+            col = 0 if i < mid else 1
+            agencies_grid.addWidget(cb, row, col)
 
-        agencies_layout.addStretch()
+        agencies_grid.setRowStretch(mid, 1)
         right_scroll.setWidget(agencies_widget)
         right_layout.addWidget(right_scroll, stretch=1)
 
@@ -372,7 +376,7 @@ class InquiryGeneratorPanel(QWidget):
         right_btn_bar.addWidget(self.btn_deselect_all)
 
         right_layout.addLayout(right_btn_bar)
-        cards_layout.addWidget(self.right_card, stretch=4)
+        cards_layout.addWidget(self.right_card, stretch=5)
 
         main_layout.addLayout(cards_layout, stretch=1)
 
@@ -516,7 +520,7 @@ class InquiryGeneratorPanel(QWidget):
         QMessageBox.warning(self, "Ошибка разбора файла", f"Не удалось автоматически извлечь данные:\n{err}\n\nВы можете заполнить реквизиты вручную.")
 
     def clear_fields(self):
-        self.drop_area.label.setText("Перетащите решение или определение суда (PDF, DOCX)\nили нажмите для выбора файла")
+        self.drop_area.label.setText("Перетащите решение или определение суда в формате PDF или Word\nили нажмите для выбора файла")
         self.edit_case_no.clear()
         self.edit_dec_date.clear()
         self.edit_court_name.clear()

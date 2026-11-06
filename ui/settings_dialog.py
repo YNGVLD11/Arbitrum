@@ -135,7 +135,7 @@ class SettingsDialog(QDialog):
         # 1. Output Directory Group
         dir_group = QGroupBox("Папка для сохранения готовых отчётов")
         dir_layout = QVBoxLayout(dir_group)
-        dir_layout.setContentsMargins(14, 2, 14, 10)
+        dir_layout.setContentsMargins(16, 12, 16, 12)
         dir_layout.setSpacing(10)
 
         dir_input_layout = QHBoxLayout()
@@ -177,12 +177,12 @@ class SettingsDialog(QDialog):
         # 2. Output Format Group (PDF vs DOCX)
         fmt_group = QGroupBox("Формат выходного файла")
         fmt_layout = QHBoxLayout(fmt_group)
-        fmt_layout.setContentsMargins(14, 2, 14, 10)
+        fmt_layout.setContentsMargins(16, 12, 16, 12)
         fmt_layout.setSpacing(20)
 
         self.fmt_btn_group = QButtonGroup(self)
-        self.pdf_radio = QRadioButton("📄 Формат PDF (.pdf)")
-        self.docx_radio = QRadioButton("📝 Формат Word (.docx)")
+        self.pdf_radio = QRadioButton("📄 Формат PDF")
+        self.docx_radio = QRadioButton("📝 Формат Word")
         self.fmt_btn_group.addButton(self.pdf_radio, 1)
         self.fmt_btn_group.addButton(self.docx_radio, 2)
         fmt_layout.addWidget(self.pdf_radio)
@@ -194,12 +194,12 @@ class SettingsDialog(QDialog):
         # 3. Layout Mode Group (1 страница vs 2 страницы на лист A4)
         self.mode_group = QGroupBox("Режим компоновки страниц")
         mode_layout = QVBoxLayout(self.mode_group)
-        mode_layout.setContentsMargins(14, 2, 14, 10)
+        mode_layout.setContentsMargins(16, 12, 16, 12)
         mode_layout.setSpacing(10)
 
         self.mode_btn_group = QButtonGroup(self)
-        self.standard_radio = QRadioButton("По одной странице на лист (как в исходных файлах)")
-        self.twoup_radio = QRadioButton("По две страницы на листе A4 (разворот 2-up)")
+        self.standard_radio = QRadioButton("По одной странице на лист")
+        self.twoup_radio = QRadioButton("По две страницы на листе A4")
         self.mode_btn_group.addButton(self.standard_radio, 1)
         self.mode_btn_group.addButton(self.twoup_radio, 2)
         mode_layout.addWidget(self.standard_radio)
@@ -209,7 +209,7 @@ class SettingsDialog(QDialog):
         # 4. Theme Selection Group
         theme_group = QGroupBox("Тема оформления")
         theme_layout = QVBoxLayout(theme_group)
-        theme_layout.setContentsMargins(14, 2, 14, 10)
+        theme_layout.setContentsMargins(16, 12, 16, 12)
         theme_layout.setSpacing(10)
 
         self.theme_btn_group = QButtonGroup(self)

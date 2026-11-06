@@ -7,13 +7,13 @@ from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 TEMPLATES_CONFIG = [
-    {"id": "banks", "name": "Банки (уведомление-запрос)", "file": "_Запрос в банки.docx"},
+    {"id": "banks", "name": "Банки", "file": "_Запрос в банки.docx"},
     {"id": "administration", "name": "Администрация", "file": "в_Администрацию_должник_супруг_РИ.docx"},
     {"id": "bti", "name": "БТИ", "file": "в_БТИ_РИ.docx"},
     {"id": "gibdd", "name": "ГИБДД", "file": "в_ГИБДД_должник_РИ.docx"},
     {"id": "gims", "name": "ГИМС", "file": "в_ГИМС_должник_супруг_РИ.docx"},
     {"id": "gostekhnadzor", "name": "Гостехнадзор", "file": "в_Гостехнадзор_должник_супруг_РИ.docx"},
-    {"id": "egrn", "name": "ЕГРН (Росреестр сокращенный)", "file": "в_ЕГРН_(сокращенный)_должник_супруг_РИ.docx"},
+    {"id": "egrn", "name": "ЕГРН", "file": "в_ЕГРН_(сокращенный)_должник_супруг_РИ.docx"},
     {"id": "zags", "name": "ЗАГС", "file": "в_ЗАГС_РИ.docx"},
     {"id": "ifns", "name": "ИФНС", "file": "в_ИФНС_должник_супруг_РИ.docx"},
     {"id": "rosaviation", "name": "Росавиация", "file": "в_Росавиацию_должник_супруг_РИ.docx"},
@@ -21,10 +21,10 @@ TEMPLATES_CONFIG = [
     {"id": "rosimushchestvo", "name": "Росимущество", "file": "в_Росимущество_РИ.docx"},
     {"id": "rospatent", "name": "Роспатент", "file": "в_Роспатент_должник_супруг_РИ.docx"},
     {"id": "rosreestr", "name": "Росреестр", "file": "в_Росреестр_должник_супруг_РИ.docx"},
-    {"id": "fssp", "name": "ФССП (Служба судебных приставов)", "file": "в_ССП_РИ.docx"},
-    {"id": "sfr", "name": "СФР (Социальный фонд)", "file": "в_СФР_РИ.docx"},
+    {"id": "fssp", "name": "ФССП", "file": "в_ССП_РИ.docx"},
+    {"id": "sfr", "name": "СФР", "file": "в_СФР_РИ.docx"},
     {"id": "debtor_spouse", "name": "Должнику / Супругу", "file": "Должнику_супругу_РИ.docx"},
-    {"id": "uvm", "name": "УВМ (МВД по вопросам миграции)", "file": "запрос в УВМ.docx"},
+    {"id": "uvm", "name": "УВМ", "file": "запрос в УВМ.docx"},
 ]
 
 MONTHS_RU = {

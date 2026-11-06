@@ -499,6 +499,134 @@ QLabel#subTitle {{
     font-size: 12px;
     color: #64748B;
 }}
+
+/* Sidebar Styles (Light) */
+QFrame#sidebarFrame {{
+    background-color: rgba(255, 255, 255, 0.92);
+    border: 1px solid #BAE6FD;
+    border-radius: 12px;
+}}
+
+QLabel#sidebarTitle {{
+    font-size: 16px;
+    font-weight: 700;
+    color: #0369A1;
+}}
+
+QLabel#sidebarSubtitle {{
+    font-size: 10px;
+    font-weight: 500;
+    color: #64748B;
+}}
+
+QFrame#sidebarDivider {{
+    color: #BAE6FD;
+    background-color: #BAE6FD;
+    max-height: 1px;
+}}
+
+QPushButton#sidebarNavButton {{
+    background-color: transparent;
+    color: #334155;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+}}
+
+QPushButton#sidebarNavButton:hover {{
+    background-color: #F0F9FF;
+    color: #0369A1;
+    border-color: #BAE6FD;
+}}
+
+QPushButton#sidebarNavButton[active="true"] {{
+    background-color: #2563EB;
+    color: #FFFFFF;
+    border: 1px solid #1D4ED8;
+    font-weight: 700;
+}}
+
+QPushButton#sidebarSettingsButton {{
+    background-color: #FFFFFF;
+    color: #334155;
+    border: 1px solid #BAE6FD;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+}}
+
+QPushButton#sidebarSettingsButton:hover {{
+    background-color: #F0F9FF;
+    color: #0369A1;
+    border-color: #0284C7;
+}}
+
+QLabel#sidebarVersion {{
+    font-size: 10px;
+    color: #94A3B8;
+}}
+
+/* Drop Area for Court Decisions */
+QFrame#courtDropArea {{
+    background-color: #F8FAFC;
+    border: 1px dashed #7DD3FC;
+    border-radius: 8px;
+}}
+
+QFrame#courtDropArea:hover, QFrame#courtDropArea[dragOver="true"] {{
+    background-color: #F0F9FF;
+    border: 2px dashed #0284C7;
+}}
+
+QLabel#dropAreaText {{
+    color: #0369A1;
+    font-size: 12px;
+    font-weight: 600;
+}}
+
+QLabel#formSectionHeader {{
+    font-size: 12px;
+    font-weight: 700;
+    color: #0369A1;
+    padding-top: 4px;
+    padding-bottom: 2px;
+}}
+
+QLineEdit#formLineEdit {{
+    background-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    min-height: 20px;
+}}
+
+QLineEdit#formLineEdit:focus {{
+    border: 1px solid #2563EB;
+    background-color: #F8FAFC;
+}}
+
+QProgressBar#parsingProgressBar {{
+    background-color: #E2E8F0;
+    border-radius: 4px;
+    border: none;
+}}
+
+QProgressBar#parsingProgressBar::chunk {{
+    background-color: #2563EB;
+    border-radius: 4px;
+}}
+
+QLabel#parsingStatusLabel {{
+    font-size: 11px;
+    color: #0369A1;
+    font-weight: 600;
+}}
 """
 
 
@@ -850,6 +978,135 @@ QLabel#headerTitle {{
 QLabel#subTitle {{
     font-size: 12px;
     color: #A4133C;
+}}
+
+/* Sidebar Styles (Feminine) */
+QFrame#sidebarFrame {{
+    background-color: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(255, 175, 195, 0.85);
+    border-radius: 12px;
+}}
+
+QLabel#sidebarTitle {{
+    font-size: 16px;
+    font-weight: 700;
+    color: #800F2F;
+}}
+
+QLabel#sidebarSubtitle {{
+    font-size: 10px;
+    font-weight: 500;
+    color: #A4133C;
+}}
+
+QFrame#sidebarDivider {{
+    color: #FFCCD5;
+    background-color: #FFCCD5;
+    max-height: 1px;
+}}
+
+QPushButton#sidebarNavButton {{
+    background-color: transparent;
+    color: #590D22;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+}}
+
+QPushButton#sidebarNavButton:hover {{
+    background-color: #FFF0F3;
+    color: #A4133C;
+    border-color: #FFCCD5;
+}}
+
+QPushButton#sidebarNavButton[active="true"] {{
+    background-color: #FF4D6D;
+    color: #FFFFFF;
+    border: 1px solid #C9184A;
+    font-weight: 700;
+}}
+
+QPushButton#sidebarSettingsButton {{
+    background-color: #FFFFFF;
+    color: #590D22;
+    border: 1px solid #FFCCD5;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+}}
+
+QPushButton#sidebarSettingsButton:hover {{
+    background-color: #FFF0F3;
+    color: #800F2F;
+    border-color: #FF758F;
+}}
+
+QLabel#sidebarVersion {{
+    font-size: 10px;
+    color: #C97A8E;
+}}
+
+/* Drop Area for Court Decisions (Feminine) */
+QFrame#courtDropArea {{
+    background-color: #FFF9FA;
+    border: 1px dashed #FFB3C1;
+    border-radius: 8px;
+}}
+
+QFrame#courtDropArea:hover, QFrame#courtDropArea[dragOver="true"] {{
+    background-color: #FFF0F3;
+    border: 2px dashed #FF4D6D;
+}}
+
+QLabel#dropAreaText {{
+    color: #A4133C;
+    font-size: 12px;
+    font-weight: 600;
+}}
+
+QLabel#formSectionHeader {{
+    font-size: 12px;
+    font-weight: 700;
+    color: #800F2F;
+    padding-top: 4px;
+    padding-bottom: 2px;
+}}
+
+QLineEdit#formLineEdit {{
+    background-color: #FFFFFF;
+    border: 1px solid #FFCCD5;
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    min-height: 20px;
+    color: #38272F;
+}}
+
+QLineEdit#formLineEdit:focus {{
+    border: 1px solid #FF4D6D;
+    background-color: #FFFDFE;
+}}
+
+QProgressBar#parsingProgressBar {{
+    background-color: #FFE5EC;
+    border-radius: 4px;
+    border: none;
+}}
+
+QProgressBar#parsingProgressBar::chunk {{
+    background-color: #FF4D6D;
+    border-radius: 4px;
+}}
+
+QLabel#parsingStatusLabel {{
+    font-size: 11px;
+    color: #A4133C;
+    font-weight: 600;
 }}
 """
 

@@ -3,7 +3,7 @@ import datetime
 from PySide6.QtCore import Qt, QThread, Signal, QRectF
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QSplitter, QMessageBox, QApplication
+    QPushButton, QSplitter, QMessageBox, QApplication, QStackedWidget
 )
 from PySide6.QtGui import QPainter
 
@@ -11,8 +11,10 @@ from ui.themes import (
     THEME_LIGHT, THEME_FEMININE, LIGHT_QSS, FEMININE_QSS,
     FeminineBackgroundPainter, SkyBackgroundPainter, get_app_icon
 )
+from ui.sidebar import Sidebar
 from ui.file_list import FileListPanel
 from ui.preview_panel import DocumentPreviewPanel
+from ui.inquiry_panel import InquiryGeneratorPanel
 from ui.settings_dialog import SettingsDialog, AppSettings
 from ui.progress_dialog import BuildProgressDialog
 from ui.success_dialog import BuildSuccessDialog
@@ -56,13 +58,15 @@ class BuildWorker(QThread):
 
 class MainWindow(QMainWindow):
     """
-    Main Application Window.
+    Main Application Window with Sidebar and 2 Modules:
+    1. Сборка отчёта АУ
+    2. Генератор запросов
     """
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Мастер сборки отчета АУ")
-        self.resize(1100, 720)
-        self.setMinimumSize(920, 580)
+        self.setWindowTitle("Arbitrum")
+        self.resize(1180, 750)
+        self.setMinimumSize(960, 600)
         self.setWindowIcon(get_app_icon())
 
         self.app_settings = AppSettings()
@@ -78,48 +82,49 @@ class MainWindow(QMainWindow):
         self.central_widget = QWidget(self)
         self.setCentralWidget(self.central_widget)
 
-        root_layout = QVBoxLayout(self.central_widget)
-        root_layout.setContentsMargins(18, 12, 18, 16)
-        root_layout.setSpacing(10)
+        root_layout = QHBoxLayout(self.central_widget)
+        root_layout.setContentsMargins(14, 14, 14, 14)
+        root_layout.setSpacing(14)
 
-        # 1. Minimal Top Bar: No title text, only gear ⚙️ button aligned to the right (Big & Easy to click)
-        top_bar = QHBoxLayout()
-        top_bar.setContentsMargins(0, 0, 0, 0)
-        top_bar.addStretch()
+        # 1. Left Sidebar
+        self.sidebar = Sidebar(theme=self.current_theme, parent=self)
+        self.sidebar.page_changed.connect(self._on_page_changed)
+        self.sidebar.settings_clicked.connect(self._open_settings)
+        root_layout.addWidget(self.sidebar)
 
-        self.settings_btn = QPushButton("⚙️")
-        self.settings_btn.setObjectName("settingsButton")
-        self.settings_btn.setFixedSize(48, 44)
-        self.settings_btn.setToolTip("Настройки")
-        self.settings_btn.clicked.connect(self._open_settings)
-        top_bar.addWidget(self.settings_btn)
+        # 2. Main Stacked Pages
+        self.stack = QStackedWidget(self)
+        root_layout.addWidget(self.stack, stretch=1)
 
-        root_layout.addLayout(top_bar)
+        # -------------------------------------------------------------
+        # PAGE 0: Сборка отчёта АУ (Report Builder View)
+        # -------------------------------------------------------------
+        self.report_page = QWidget()
+        report_layout = QVBoxLayout(self.report_page)
+        report_layout.setContentsMargins(0, 0, 0, 0)
+        report_layout.setSpacing(12)
 
-        # 2. Central Splitter (List 2/3 on Left, Preview 1/3 on Right)
-        # Extra-wide gap between cards (22px)
+        # Central Splitter (List 2/3 on Left, Preview 1/3 on Right)
         self.splitter = QSplitter(Qt.Horizontal)
-        self.splitter.setHandleWidth(22)
+        self.splitter.setHandleWidth(18)
         self.splitter.setChildrenCollapsible(False)
 
-        # Left: File List Panel (2/3 of width)
+        # Left: File List Panel
         self.file_list_panel = FileListPanel(theme=self.current_theme, parent=self)
         self.file_list_panel.file_selected.connect(self._on_file_selected)
         self.file_list_panel.file_list_changed.connect(self._update_build_button_state)
         self.splitter.addWidget(self.file_list_panel)
 
-        # Right: Document Preview Panel (1/3 of width)
+        # Right: Document Preview Panel
         self.preview_panel = DocumentPreviewPanel(self)
         self.splitter.addWidget(self.preview_panel)
 
-        # Splitter proportion: 2/3 (list) to 1/3 (preview)
         self.splitter.setSizes([720, 360])
-        root_layout.addWidget(self.splitter, stretch=1)
+        report_layout.addWidget(self.splitter, stretch=1)
 
-        # 3. Bottom Action Bar: Centered "Собрать pdf-файл" button
+        # Bottom Action Bar
         bottom_layout = QHBoxLayout()
-        bottom_layout.setContentsMargins(0, 6, 0, 0)
-
+        bottom_layout.setContentsMargins(0, 4, 0, 0)
         bottom_layout.addStretch()
 
         self.build_btn = QPushButton("Собрать pdf-файл")
@@ -128,10 +133,20 @@ class MainWindow(QMainWindow):
         bottom_layout.addWidget(self.build_btn)
 
         bottom_layout.addStretch()
+        report_layout.addLayout(bottom_layout)
 
-        root_layout.addLayout(bottom_layout)
+        self.stack.addWidget(self.report_page)
+
+        # -------------------------------------------------------------
+        # PAGE 1: Генератор запросов (Inquiry Generator View)
+        # -------------------------------------------------------------
+        self.inquiry_panel = InquiryGeneratorPanel(settings=self.app_settings, parent=self)
+        self.stack.addWidget(self.inquiry_panel)
 
         self._update_build_button_state()
+
+    def _on_page_changed(self, idx: int):
+        self.stack.setCurrentIndex(idx)
 
     def closeEvent(self, event):
         if hasattr(self, "preview_panel") and hasattr(self.preview_panel, "preview_worker"):
@@ -141,9 +156,9 @@ class MainWindow(QMainWindow):
     def mousePressEvent(self, event):
         pos = event.position().toPoint()
         child = self.childAt(pos)
-        # Click anywhere outside the list cards to clear card selection
-        if child is None or not self.file_list_panel.list_widget.isAncestorOf(child):
-            self.file_list_panel.clear_selection()
+        if hasattr(self, "file_list_panel"):
+            if child is None or not self.file_list_panel.list_widget.isAncestorOf(child):
+                self.file_list_panel.clear_selection()
         super().mousePressEvent(event)
 
     def paintEvent(self, event):
@@ -162,9 +177,12 @@ class MainWindow(QMainWindow):
         else:
             app.setStyleSheet(LIGHT_QSS)
 
+        self.sidebar.set_theme(theme_name)
         self.file_list_panel.set_theme(theme_name)
         if hasattr(self, "preview_panel"):
             self.preview_panel.set_theme(theme_name)
+        if hasattr(self, "inquiry_panel"):
+            self.inquiry_panel.set_theme(theme_name)
         self.update()
 
     def _open_settings(self):
@@ -207,7 +225,6 @@ class MainWindow(QMainWindow):
         out_filename = f"Отчет_АУ_{timestamp}.pdf"
         out_path = os.path.join(out_dir, out_filename)
 
-        # Modal progress dialog
         self.progress_dlg = BuildProgressDialog(self)
         self.worker = BuildWorker(
             file_paths=paths,

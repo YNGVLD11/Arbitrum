@@ -24,6 +24,11 @@ def build():
         f"--add-data={assets_dir};assets",
         f"--add-data={os.path.join(project_dir, 'ui')};ui",
         f"--add-data={os.path.join(project_dir, 'core')};core",
+        "--exclude-module=PyQt6",
+        "--exclude-module=PyQt5",
+        "--hidden-import=pymorphy3",
+        "--hidden-import=pymorphy3_dicts_ru",
+        "--collect-all=pymorphy3_dicts_ru",
         main_py
     ]
 

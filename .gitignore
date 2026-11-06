@@ -1,0 +1,21 @@
+# Временные файлы Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.spec
+
+# Среда разработки
+.venv/
+venv/
+ENV/
+.idea/
+.vscode/
+
+# Сборка PyInstaller
+build/
+dist/
+
+# Кэш предпросмотра и временные файлы ОС
+*.tmp
+Thumbs.db
+Desktop.ini

@@ -384,12 +384,14 @@ class FileListPanel(QFrame):
 
         title = QLabel("Список документов")
         title.setObjectName("headerTitle")
+        title.setFixedHeight(24)
         header_layout.addWidget(title)
 
         header_layout.addStretch()
 
         self.count_lbl = QLabel("0 файлов")
         self.count_lbl.setObjectName("subTitle")
+        self.count_lbl.setFixedHeight(24)
         header_layout.addWidget(self.count_lbl)
 
         layout.addLayout(header_layout)
@@ -408,20 +410,21 @@ class FileListPanel(QFrame):
 
         # "Добавить"
         self.add_btn = QPushButton("➕ Добавить")
+        self.add_btn.setFixedHeight(34)
         self.add_btn.clicked.connect(self._open_file_dialog)
         btn_layout.addWidget(self.add_btn)
 
-        # Compact Up / Down buttons with zero padding so arrows ▲ and ▼ are clearly visible
+        # Compact Up / Down buttons
         self.up_btn = QPushButton("▲")
         self.up_btn.setObjectName("toolIconBtn")
-        self.up_btn.setFixedSize(34, 32)
+        self.up_btn.setFixedSize(36, 34)
         self.up_btn.setToolTip("Переместить выбранный файл выше")
         self.up_btn.clicked.connect(self.move_current_up)
         btn_layout.addWidget(self.up_btn)
 
         self.down_btn = QPushButton("▼")
         self.down_btn.setObjectName("toolIconBtn")
-        self.down_btn.setFixedSize(34, 32)
+        self.down_btn.setFixedSize(36, 34)
         self.down_btn.setToolTip("Переместить выбранный файл ниже")
         self.down_btn.clicked.connect(self.move_current_down)
         btn_layout.addWidget(self.down_btn)
@@ -431,6 +434,7 @@ class FileListPanel(QFrame):
         # Clear All
         self.clear_btn = QPushButton("Очистить")
         self.clear_btn.setObjectName("dangerButton")
+        self.clear_btn.setFixedHeight(34)
         self.clear_btn.clicked.connect(self.clear_files)
         btn_layout.addWidget(self.clear_btn)
 

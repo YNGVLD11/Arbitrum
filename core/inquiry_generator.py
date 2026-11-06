@@ -132,7 +132,9 @@ def generate_single_inquiry(
         p0 = doc.paragraphs[0]
         if "финансовый управляющий" in p0.text.lower():
             set_paragraph_formatted(p0, [
-                (f"Финансовый управляющий {debtor_fio_gen} {manager_fio} ", False)
+                ("Финансовый управляющий ", False),
+                (f"{debtor_fio_gen} ", True),
+                (f"{manager_fio} ", False)
             ], font_size_pt=8, align=WD_ALIGN_PARAGRAPH.LEFT)
 
     if len(doc.paragraphs) > 2:
@@ -156,51 +158,98 @@ def generate_single_inquiry(
         elif "в рамках дела о банкротстве установлено, что должник состо" in txt.lower():
             idx_spouse = idx
 
-    # Format Decision Paragraph
+    # Format Decision Paragraph with BOLD inserted fields
     if idx_decision != -1:
         p_dec = doc.paragraphs[idx_decision]
-        set_paragraph_formatted(p_dec, [
-            (f"Решением {court_dec_str} от {decision_date} г. по делу № ", False),
+        dec_segments = [
+            ("Решением ", False),
+            (f"{court_dec_str} ", True),
+            ("от ", False),
+            (f"{decision_date} г. ", True),
+            ("по делу № ", False),
             (f"{case_no} ", True),
             (f"{debtor_fio} ", True),
-            (f"(дата рождения: {debtor_birth}, место рождения: {debtor_place}, СНИЛС {debtor_snils}, ИНН {debtor_inn}, регистрация по месту жительства: {debtor_address}{pass_block}) (далее по тексту – должник) признан несостоятельным (банкротом) и введена процедура реализации имущества гражданина.", False)
-        ], font_size_pt=10, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
+            ("(дата рождения: ", False),
+            (f"{debtor_birth}", True),
+            (", место рождения: ", False),
+            (f"{debtor_place}", True),
+            (", СНИЛС ", False),
+            (f"{debtor_snils}", True),
+            (", ИНН ", False),
+            (f"{debtor_inn}", True),
+            (", регистрация по месту жительства: ", False),
+            (f"{debtor_address}", True)
+        ]
+        if pass_series and pass_num:
+            dec_segments.extend([
+                (", паспорт ", False),
+                (f"{pass_series} {pass_num}", True)
+            ])
+            if pass_by:
+                dec_segments.extend([
+                    (", выдан ", False),
+                    (f"{pass_by}", True)
+                ])
+            if pass_date:
+                dec_segments.append((f" {pass_date}", True))
+            if pass_code:
+                dec_segments.extend([
+                    (", код подразделения ", False),
+                    (f"{pass_code}", True)
+                ])
+        dec_segments.append((") (далее по тексту – должник) признан несостоятельным (банкротом) и введена процедура реализации имущества гражданина.", False))
+        set_paragraph_formatted(p_dec, dec_segments, font_size_pt=10, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
 
-    # Format Manager Paragraph
+    # Format Manager Paragraph with BOLD inserted fields
     if idx_manager != -1:
         p_mgr = doc.paragraphs[idx_manager]
         set_paragraph_formatted(p_mgr, [
             ("Финансовым управляющим утверждена ", False),
             (f"{manager_fio} ", True),
-            (f"(ИНН {manager_inn}, СНИЛС {manager_snils}) - член {manager_sro} (ОГРН {manager_sro_ogrn}, ИНН {manager_sro_inn}, адрес: {manager_sro_address}).", False)
+            ("(ИНН ", False),
+            (f"{manager_inn}", True),
+            (", СНИЛС ", False),
+            (f"{manager_snils}", True),
+            (f") - член {manager_sro} (ОГРН {manager_sro_ogrn}, ИНН {manager_sro_inn}, адрес: {manager_sro_address}).", False)
         ], font_size_pt=10, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
 
-    # Format Spouse Paragraph
+    # Format Spouse Paragraph with BOLD inserted fields
     if has_spouse:
         status_word = "состоит в браке" if spouse_status == "married" else "состоял в браке"
         status_label = "супруг должника" if spouse_status == "married" else "бывший супруг должника"
         action_word = "Брак зарегистрирован" if spouse_status == "married" else "Брак расторгнут"
-        date_suffix = f" {action_word} {marriage_date} г." if marriage_date else ""
 
         spouse_segments = [
             (f"В рамках дела о банкротстве установлено, что должник {status_word} с ", False),
             (f"{spouse_fio_instr} ", True),
-            (f"(дата рождения: {spouse_birth}, место рождения: {spouse_place}, СНИЛС: {spouse_snils} ИНН: {spouse_inn}, регистрация по месту жительства: {spouse_address}) (далее по тексту – {status_label}).{date_suffix}", False)
+            ("(дата рождения: ", False),
+            (f"{spouse_birth}", True),
+            (", место рождения: ", False),
+            (f"{spouse_place}", True),
+            (", СНИЛС: ", False),
+            (f"{spouse_snils}", True),
+            (" ИНН: ", False),
+            (f"{spouse_inn}", True),
+            (", регистрация по месту жительства: ", False),
+            (f"{spouse_address}", True),
+            (f") (далее по тексту – {status_label}).", False)
         ]
+        if marriage_date:
+            spouse_segments.extend([
+                (f" {action_word} ", False),
+                (f"{marriage_date} г.", True)
+            ])
 
         if idx_spouse != -1:
-            # Replace existing spouse paragraph
             p_sp = doc.paragraphs[idx_spouse]
             set_paragraph_formatted(p_sp, spouse_segments, font_size_pt=10, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
         else:
-            # Insert new paragraph right after manager paragraph
             if idx_manager != -1 and idx_manager + 1 < len(doc.paragraphs):
                 p_sp = doc.paragraphs[idx_manager + 1].insert_paragraph_before()
             else:
                 p_sp = doc.add_paragraph()
             set_paragraph_formatted(p_sp, spouse_segments, font_size_pt=10, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
     else:
-        # Not married: if spouse paragraph existed, remove it
         if idx_spouse != -1:
             delete_paragraph(doc.paragraphs[idx_spouse])
 
@@ -212,14 +261,34 @@ def generate_single_inquiry(
             set_paragraph_formatted(p, [
                 ("- в отношении должника: ", True),
                 (f"{debtor_fio} ", True),
-                (f"(дата рождения: {debtor_birth}, место рождения: {debtor_place}, СНИЛС: {debtor_snils}, ИНН: {debtor_inn}, регистрация по месту жительства: {debtor_address}):", False)
+                ("(дата рождения: ", False),
+                (f"{debtor_birth}", True),
+                (", место рождения: ", False),
+                (f"{debtor_place}", True),
+                (", СНИЛС: ", False),
+                (f"{debtor_snils}", True),
+                (", ИНН: ", False),
+                (f"{debtor_inn}", True),
+                (", регистрация по месту жительства: ", False),
+                (f"{debtor_address}", True),
+                ("):", False)
             ], font_size_pt=10, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
         elif txt.startswith(("- в отношении супруга", "– в отношении супруга")):
             if has_spouse:
                 set_paragraph_formatted(p, [
                     ("- в отношении супруга должника: ", True),
                     (f"{spouse_fio} ", True),
-                    (f"(дата рождения: {spouse_birth}, место рождения: {spouse_place}, СНИЛС: {spouse_snils}, ИНН: {spouse_inn}, регистрация по месту жительства: {spouse_address}):", False)
+                    ("(дата рождения: ", False),
+                    (f"{spouse_birth}", True),
+                    (", место рождения: ", False),
+                    (f"{spouse_place}", True),
+                    (", СНИЛС: ", False),
+                    (f"{spouse_snils}", True),
+                    (", ИНН: ", False),
+                    (f"{spouse_inn}", True),
+                    (", регистрация по месту жительства: ", False),
+                    (f"{spouse_address}", True),
+                    ("):", False)
                 ], font_size_pt=10, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
             else:
                 to_delete.append(p)

@@ -203,16 +203,27 @@ QGroupBox::title {{
     color: #0369A1;
 }}
 
-/* Splitter - extra wide comfortable gap with centered divider line */
+/* Splitter - comfortable gap with clearly visible centered divider pill */
 QSplitter::handle:horizontal {{
     background-color: #7DD3FC;
-    width: 22px;
-    margin: 8px 9px;
-    border-radius: 2px;
+    width: 6px;
+    margin: 14px 7px;
+    border-radius: 3px;
 }}
 
 QSplitter::handle:horizontal:hover {{
     background-color: #0284C7;
+}}
+
+/* Tooltips */
+QToolTip {{
+    background-color: #1E293B;
+    color: #F8FAFC;
+    border: 1px solid #475569;
+    border-radius: 6px;
+    padding: 5px 9px;
+    font-size: 12px;
+    font-weight: 500;
 }}
 
 /* Gear Settings Button (Big & Prominent) */
@@ -335,12 +346,15 @@ QPushButton#toolIconBtn:hover, QPushButton#iconButton:hover {{
 /* Preview Navigation Buttons (◀, ▶, −, +) */
 QPushButton#previewNavBtn {{
     background-color: #FFFFFF;
+    color: #0F172A;
     border: 1px solid #CBD5E1;
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 0px;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: bold;
     text-align: center;
+    min-width: 36px;
+    min-height: 34px;
 }}
 
 QPushButton#previewNavBtn:hover {{
@@ -500,6 +514,12 @@ QLabel#subTitle {{
     color: #64748B;
 }}
 
+QLabel#successHighlight {{
+    color: #0369A1;
+    font-weight: 600;
+    font-size: 12px;
+}}
+
 /* Sidebar Styles (Light) */
 QFrame#sidebarFrame {{
     background-color: rgba(255, 255, 255, 0.92);
@@ -530,8 +550,8 @@ QPushButton#sidebarNavButton {{
     color: #334155;
     border: 1px solid transparent;
     border-radius: 8px;
-    padding: 8px 14px;
-    font-size: 13px;
+    padding: 8px 10px;
+    font-size: 12px;
     font-weight: 600;
     text-align: left;
 }}
@@ -682,16 +702,27 @@ QGroupBox::title {{
     color: #800F2F;
 }}
 
-/* Splitter - extra wide comfortable gap with soft rose divider line */
+/* Splitter - comfortable gap with soft rose divider pill */
 QSplitter::handle:horizontal {{
     background-color: #F497A9;
-    width: 22px;
-    margin: 8px 9px;
-    border-radius: 2px;
+    width: 6px;
+    margin: 14px 7px;
+    border-radius: 3px;
 }}
 
 QSplitter::handle:horizontal:hover {{
     background-color: #FF4D6D;
+}}
+
+/* Tooltips */
+QToolTip {{
+    background-color: #590D22;
+    color: #FFF0F3;
+    border: 1px solid #800F2F;
+    border-radius: 6px;
+    padding: 5px 9px;
+    font-size: 12px;
+    font-weight: 500;
 }}
 
 /* Gear Settings Button (Big & Prominent) */
@@ -815,12 +846,15 @@ QPushButton#toolIconBtn:hover, QPushButton#iconButton:hover {{
 /* Preview Navigation Buttons (◀, ▶, −, +) */
 QPushButton#previewNavBtn {{
     background-color: rgba(255, 255, 255, 0.95);
+    color: #590D22;
     border: 1px solid #FFCCD5;
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 0px;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: bold;
     text-align: center;
+    min-width: 36px;
+    min-height: 34px;
 }}
 
 QPushButton#previewNavBtn:hover {{
@@ -980,6 +1014,12 @@ QLabel#subTitle {{
     color: #A4133C;
 }}
 
+QLabel#successHighlight {{
+    color: #A4133C;
+    font-weight: 600;
+    font-size: 12px;
+}}
+
 /* Sidebar Styles (Feminine) */
 QFrame#sidebarFrame {{
     background-color: rgba(255, 255, 255, 0.95);
@@ -1010,8 +1050,8 @@ QPushButton#sidebarNavButton {{
     color: #590D22;
     border: 1px solid transparent;
     border-radius: 8px;
-    padding: 8px 14px;
-    font-size: 13px;
+    padding: 8px 10px;
+    font-size: 12px;
     font-weight: 600;
     text-align: left;
 }}

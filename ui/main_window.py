@@ -64,7 +64,7 @@ class MainWindow(QMainWindow):
     """
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Arbitrum")
+        self.setWindowTitle("Арбитум")
         self.resize(1180, 750)
         self.setMinimumSize(960, 600)
         self.setWindowIcon(get_app_icon())
@@ -83,8 +83,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.central_widget)
 
         root_layout = QHBoxLayout(self.central_widget)
-        root_layout.setContentsMargins(14, 14, 14, 14)
-        root_layout.setSpacing(14)
+        root_layout.setContentsMargins(22, 18, 22, 20)
+        root_layout.setSpacing(16)
 
         # 1. Left Sidebar
         self.sidebar = Sidebar(theme=self.current_theme, parent=self)
@@ -106,7 +106,7 @@ class MainWindow(QMainWindow):
 
         # Central Splitter (List 2/3 on Left, Preview 1/3 on Right)
         self.splitter = QSplitter(Qt.Horizontal)
-        self.splitter.setHandleWidth(18)
+        self.splitter.setHandleWidth(20)
         self.splitter.setChildrenCollapsible(False)
 
         # Left: File List Panel

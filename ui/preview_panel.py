@@ -46,6 +46,7 @@ class DocumentPreviewPanel(QFrame):
 
         self.title_lbl = QLabel("Предпросмотр документа")
         self.title_lbl.setObjectName("headerTitle")
+        self.title_lbl.setFixedHeight(24)
         header_layout.addWidget(self.title_lbl, stretch=1)
         layout.addLayout(header_layout)
 
@@ -93,24 +94,26 @@ class DocumentPreviewPanel(QFrame):
 
         # 3. Bottom Footer Controls
         bottom_layout = QHBoxLayout()
-        bottom_layout.setContentsMargins(0, 2, 0, 0)
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(8)
 
         # Left metadata: Orientation and Zoom only (NO pt values)
         self.meta_lbl = QLabel("Нет открытого документа")
+        self.meta_lbl.setFixedHeight(34)
         self.meta_lbl.setStyleSheet("color: #64748B; font-size: 12px; font-weight: 500;")
         bottom_layout.addWidget(self.meta_lbl)
         bottom_layout.addStretch(1)
 
         # Right: Page count + Controls in bottom right
         self.page_lbl = QLabel("0 / 0")
+        self.page_lbl.setFixedHeight(34)
         self.page_lbl.setStyleSheet("font-weight: 600; color: #475569; font-size: 12px; padding-right: 4px;")
         bottom_layout.addWidget(self.page_lbl)
 
         # Prev button
         self.prev_btn = QPushButton("◀")
         self.prev_btn.setObjectName("previewNavBtn")
-        self.prev_btn.setFixedSize(30, 28)
+        self.prev_btn.setFixedSize(36, 34)
         self.prev_btn.setToolTip("Предыдущая страница")
         self.prev_btn.clicked.connect(self._prev_page)
         bottom_layout.addWidget(self.prev_btn)
@@ -118,7 +121,7 @@ class DocumentPreviewPanel(QFrame):
         # Next button
         self.next_btn = QPushButton("▶")
         self.next_btn.setObjectName("previewNavBtn")
-        self.next_btn.setFixedSize(30, 28)
+        self.next_btn.setFixedSize(36, 34)
         self.next_btn.setToolTip("Следующая страница")
         self.next_btn.clicked.connect(self._next_page)
         bottom_layout.addWidget(self.next_btn)
@@ -126,7 +129,7 @@ class DocumentPreviewPanel(QFrame):
         # Zoom out button
         self.zoom_out_btn = QPushButton("−")
         self.zoom_out_btn.setObjectName("previewNavBtn")
-        self.zoom_out_btn.setFixedSize(30, 28)
+        self.zoom_out_btn.setFixedSize(36, 34)
         self.zoom_out_btn.setToolTip("Уменьшить масштаб")
         self.zoom_out_btn.clicked.connect(self._zoom_out)
         bottom_layout.addWidget(self.zoom_out_btn)
@@ -134,7 +137,7 @@ class DocumentPreviewPanel(QFrame):
         # Zoom in button
         self.zoom_in_btn = QPushButton("+")
         self.zoom_in_btn.setObjectName("previewNavBtn")
-        self.zoom_in_btn.setFixedSize(30, 28)
+        self.zoom_in_btn.setFixedSize(36, 34)
         self.zoom_in_btn.setToolTip("Увеличить масштаб")
         self.zoom_in_btn.clicked.connect(self._zoom_in)
         bottom_layout.addWidget(self.zoom_in_btn)

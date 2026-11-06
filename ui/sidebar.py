@@ -38,33 +38,28 @@ class Sidebar(QFrame):
         self.theme = theme
         self.current_page = 0
         self.setObjectName("sidebarFrame")
-        self.setFixedWidth(205)
+        self.setFixedWidth(180)
 
         self._init_ui()
         self.set_theme(theme)
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 16, 12, 16)
+        layout.setContentsMargins(8, 16, 8, 16)
         layout.setSpacing(8)
 
-        # Header: App Title
+        # Header: App Title "Арбитум" (without subtitle)
         header_layout = QVBoxLayout()
-        header_layout.setSpacing(2)
-        header_layout.setContentsMargins(4, 0, 4, 8)
+        header_layout.setSpacing(0)
+        header_layout.setContentsMargins(2, 0, 2, 8)
 
-        title_lbl = QLabel("Arbitrum")
+        title_lbl = QLabel("Арбитум")
         title_lbl.setObjectName("sidebarTitle")
         title_font = QFont("Segoe UI", 16, QFont.Bold)
         title_lbl.setFont(title_font)
-
-        sub_lbl = QLabel("Арбитражное управление")
-        sub_lbl.setObjectName("sidebarSubtitle")
-        sub_font = QFont("Segoe UI", 9)
-        sub_lbl.setFont(sub_font)
+        title_lbl.setAlignment(Qt.AlignCenter)
 
         header_layout.addWidget(title_lbl)
-        header_layout.addWidget(sub_lbl)
         layout.addLayout(header_layout)
 
         # Divider

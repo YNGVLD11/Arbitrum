@@ -9,7 +9,7 @@ from ui.themes import THEME_FEMININE
 from core.court_parser import CourtParserWorker, parse_court_decision, inflect_fio, to_nomn_fio
 from core.inquiry_generator import TEMPLATES_CONFIG, generate_inquiries
 from ui.progress_dialog import BuildProgressDialog
-from ui.success_dialog import BuildSuccessDialog
+from ui.inquiry_success_dialog import InquirySuccessDialog
 
 
 class DropArea(QFrame):
@@ -83,7 +83,7 @@ class InquiryGeneratorPanel(QWidget):
         main_layout.setSpacing(12)
 
         cards_layout = QHBoxLayout()
-        cards_layout.setSpacing(16)
+        cards_layout.setSpacing(18)
 
         # =====================================================================
         # LEFT CARD: Реквизиты дела и должника
@@ -91,8 +91,8 @@ class InquiryGeneratorPanel(QWidget):
         self.left_card = QFrame()
         self.left_card.setObjectName("cardFrame")
         left_layout = QVBoxLayout(self.left_card)
-        left_layout.setContentsMargins(14, 12, 14, 12)
-        left_layout.setSpacing(8)
+        left_layout.setContentsMargins(16, 14, 16, 14)
+        left_layout.setSpacing(10)
 
         card1_title = QLabel("Реквизиты дела и должника")
         card1_title.setObjectName("cardTitle")
@@ -132,13 +132,13 @@ class InquiryGeneratorPanel(QWidget):
         form_layout.addWidget(self._make_section_header("Дело и суд"))
         
         row_court = QHBoxLayout()
-        self.edit_case_no = self._make_input("Номер дела (напр. А45-10470/2026)")
-        self.edit_dec_date = self._make_input("Дата решения (напр. 07.05.2026)")
+        self.edit_case_no = self._make_input("Номер дела (напр. А45-10470/2026)", "Номер арбитражного дела")
+        self.edit_dec_date = self._make_input("Дата решения (напр. 07.05.2026)", "Дата судебного акта / решения")
         row_court.addWidget(self.edit_case_no, stretch=3)
         row_court.addWidget(self.edit_dec_date, stretch=2)
         form_layout.addLayout(row_court)
 
-        self.edit_court_name = self._make_input("Наименование арбитражного суда")
+        self.edit_court_name = self._make_input("Наименование арбитражного суда", "Наименование арбитражного суда")
         form_layout.addWidget(self.edit_court_name)
 
         # Section 2: Должник
@@ -146,42 +146,42 @@ class InquiryGeneratorPanel(QWidget):
         form_layout.addWidget(self._make_section_header("Данные должника"))
         
         row_fio = QHBoxLayout()
-        self.edit_debtor_fio = self._make_input("ФИО должника (Именительный падеж)")
+        self.edit_debtor_fio = self._make_input("ФИО должника (Именительный падеж)", "ФИО должника (в именительном падеже)")
         self.edit_debtor_fio.textChanged.connect(self._on_debtor_name_changed)
-        self.edit_debtor_fio_gen = self._make_input("ФИО должника (Родительный падеж)")
+        self.edit_debtor_fio_gen = self._make_input("ФИО должника (Родительный падеж)", "ФИО должника (в родительном падеже: кого?)")
         row_fio.addWidget(self.edit_debtor_fio)
         row_fio.addWidget(self.edit_debtor_fio_gen)
         form_layout.addLayout(row_fio)
 
         row_debtor_b = QHBoxLayout()
-        self.edit_debtor_birth = self._make_input("Дата рождения (ДД.ММ.ГГГГ)")
-        self.edit_debtor_place = self._make_input("Место рождения")
+        self.edit_debtor_birth = self._make_input("Дата рождения (ДД.ММ.ГГГГ)", "Дата рождения должника")
+        self.edit_debtor_place = self._make_input("Место рождения", "Место рождения должника")
         row_debtor_b.addWidget(self.edit_debtor_birth, stretch=2)
         row_debtor_b.addWidget(self.edit_debtor_place, stretch=3)
         form_layout.addLayout(row_debtor_b)
 
         row_debtor_ids = QHBoxLayout()
-        self.edit_debtor_snils = self._make_input("СНИЛС")
-        self.edit_debtor_inn = self._make_input("ИНН")
+        self.edit_debtor_snils = self._make_input("СНИЛС", "СНИЛС должника")
+        self.edit_debtor_inn = self._make_input("ИНН", "ИНН должника")
         row_debtor_ids.addWidget(self.edit_debtor_snils)
         row_debtor_ids.addWidget(self.edit_debtor_inn)
         form_layout.addLayout(row_debtor_ids)
 
-        self.edit_debtor_addr = self._make_input("Адрес регистрации по месту жительства")
+        self.edit_debtor_addr = self._make_input("Адрес регистрации по месту жительства", "Адрес регистрации должника")
         form_layout.addWidget(self.edit_debtor_addr)
 
         row_pass1 = QHBoxLayout()
-        self.edit_pass_series = self._make_input("Паспорт серия")
-        self.edit_pass_num = self._make_input("Паспорт номер")
-        self.edit_pass_date = self._make_input("Дата выдачи")
-        self.edit_pass_code = self._make_input("Код подразделения")
+        self.edit_pass_series = self._make_input("Паспорт серия", "Серия паспорта должника (4 цифры)")
+        self.edit_pass_num = self._make_input("Паспорт номер", "Номер паспорта должника (6 цифр)")
+        self.edit_pass_date = self._make_input("Дата выдачи", "Дата выдачи паспорта должника")
+        self.edit_pass_code = self._make_input("Код подразделения", "Код подразделения органа, выдавшего паспорт")
         row_pass1.addWidget(self.edit_pass_series)
         row_pass1.addWidget(self.edit_pass_num)
         row_pass1.addWidget(self.edit_pass_date)
         row_pass1.addWidget(self.edit_pass_code)
         form_layout.addLayout(row_pass1)
 
-        self.edit_pass_issued_by = self._make_input("Кем выдан паспорт")
+        self.edit_pass_issued_by = self._make_input("Кем выдан паспорт", "Кем выдан паспорт должника")
         form_layout.addWidget(self.edit_pass_issued_by)
 
         # Section 3: Семейное положение и супруг
@@ -214,30 +214,30 @@ class InquiryGeneratorPanel(QWidget):
         spouse_cont_layout.setSpacing(6)
 
         row_sp_fio = QHBoxLayout()
-        self.edit_spouse_fio = self._make_input("ФИО супруга(и)")
+        self.edit_spouse_fio = self._make_input("ФИО супруга(и)", "ФИО супруга(и) (в именительном падеже)")
         self.edit_spouse_fio.textChanged.connect(self._on_spouse_name_changed)
-        self.edit_spouse_fio_instr = self._make_input("ФИО супруга (Творительный падеж: с кем?)")
+        self.edit_spouse_fio_instr = self._make_input("ФИО супруга (Творительный падеж: с кем?)", "ФИО супруга в творительном падеже (с кем: с Базаровой Татьяной Алексеевной)")
         row_sp_fio.addWidget(self.edit_spouse_fio)
         row_sp_fio.addWidget(self.edit_spouse_fio_instr)
         spouse_cont_layout.addLayout(row_sp_fio)
 
         row_sp_b = QHBoxLayout()
-        self.edit_spouse_birth = self._make_input("Дата рождения супруга(и)")
-        self.edit_spouse_place = self._make_input("Место рождения супруга(и)")
-        self.edit_marriage_date = self._make_input("Дата заключения/расторжения брака")
+        self.edit_spouse_birth = self._make_input("Дата рождения супруга(и)", "Дата рождения супруга(и)")
+        self.edit_spouse_place = self._make_input("Место рождения супруга(и)", "Место рождения супруга(и)")
+        self.edit_marriage_date = self._make_input("Дата заключения/расторжения брака", "Дата регистрации или прекращения брака")
         row_sp_b.addWidget(self.edit_spouse_birth)
         row_sp_b.addWidget(self.edit_spouse_place)
         row_sp_b.addWidget(self.edit_marriage_date)
         spouse_cont_layout.addLayout(row_sp_b)
 
         row_sp_ids = QHBoxLayout()
-        self.edit_spouse_snils = self._make_input("СНИЛС супруга(и)")
-        self.edit_spouse_inn = self._make_input("ИНН супруга(и)")
+        self.edit_spouse_snils = self._make_input("СНИЛС супруга(и)", "СНИЛС супруга(и)")
+        self.edit_spouse_inn = self._make_input("ИНН супруга(и)", "ИНН супруга(и)")
         row_sp_ids.addWidget(self.edit_spouse_snils)
         row_sp_ids.addWidget(self.edit_spouse_inn)
         spouse_cont_layout.addLayout(row_sp_ids)
 
-        self.edit_spouse_addr = self._make_input("Адрес регистрации супруга(и) (если совпадает, можно оставить пустым)")
+        self.edit_spouse_addr = self._make_input("Адрес регистрации супруга(и) (если совпадает, можно оставить пустым)", "Адрес регистрации супруга(и)")
         spouse_cont_layout.addWidget(self.edit_spouse_addr)
 
         form_layout.addWidget(self.spouse_container)
@@ -248,11 +248,11 @@ class InquiryGeneratorPanel(QWidget):
         form_layout.addWidget(self._make_section_header("Финансовый управляющий"))
         
         row_mgr = QHBoxLayout()
-        self.edit_mgr_fio = self._make_input("ФИО управляющего")
+        self.edit_mgr_fio = self._make_input("ФИО управляющего", "ФИО арбитражного / финансового управляющего")
         self.edit_mgr_fio.setText("Гусарова Ксения Андреевна")
-        self.edit_mgr_phone = self._make_input("Телефон")
+        self.edit_mgr_phone = self._make_input("Телефон", "Контактный телефон финансового управляющего")
         self.edit_mgr_phone.setText("+7 (913) 989-01-63")
-        self.edit_mgr_email = self._make_input("Эл. почта")
+        self.edit_mgr_email = self._make_input("Эл. почта", "Электронная почта финансового управляющего")
         self.edit_mgr_email.setText("kseniya_gusarova@mail.ru")
         row_mgr.addWidget(self.edit_mgr_fio, stretch=3)
         row_mgr.addWidget(self.edit_mgr_phone, stretch=2)
@@ -260,11 +260,11 @@ class InquiryGeneratorPanel(QWidget):
         form_layout.addLayout(row_mgr)
 
         row_mgr_ids = QHBoxLayout()
-        self.edit_mgr_inn = self._make_input("ИНН управляющего")
+        self.edit_mgr_inn = self._make_input("ИНН управляющего", "ИНН финансового управляющего")
         self.edit_mgr_inn.setText("380470431942")
-        self.edit_mgr_snils = self._make_input("СНИЛС управляющего")
+        self.edit_mgr_snils = self._make_input("СНИЛС управляющего", "СНИЛС финансового управляющего")
         self.edit_mgr_snils.setText("136-556-599 95")
-        self.edit_mgr_addr = self._make_input("Почтовый адрес для корреспонденции")
+        self.edit_mgr_addr = self._make_input("Почтовый адрес для корреспонденции", "Почтовый адрес для направления корреспонденции")
         self.edit_mgr_addr.setText("630007, г. Новосибирск, а/я 1")
         row_mgr_ids.addWidget(self.edit_mgr_inn)
         row_mgr_ids.addWidget(self.edit_mgr_snils)
@@ -299,8 +299,8 @@ class InquiryGeneratorPanel(QWidget):
         self.right_card = QFrame()
         self.right_card.setObjectName("cardFrame")
         right_layout = QVBoxLayout(self.right_card)
-        right_layout.setContentsMargins(14, 12, 14, 12)
-        right_layout.setSpacing(8)
+        right_layout.setContentsMargins(16, 14, 16, 14)
+        right_layout.setSpacing(10)
 
         right_header = QHBoxLayout()
         card2_title = QLabel("Список ведомств")
@@ -375,9 +375,10 @@ class InquiryGeneratorPanel(QWidget):
         lbl.setObjectName("formSectionHeader")
         return lbl
 
-    def _make_input(self, placeholder: str) -> QLineEdit:
+    def _make_input(self, placeholder: str, tooltip: str = "") -> QLineEdit:
         le = QLineEdit()
         le.setPlaceholderText(placeholder)
+        le.setToolTip(tooltip or placeholder)
         le.setObjectName("formLineEdit")
         return le
 
@@ -596,12 +597,11 @@ class InquiryGeneratorPanel(QWidget):
                     progress_callback=prog_dlg.set_progress
                 )
                 prog_dlg.accept()
-                meta = {
-                    "output_path": res["output_dir"],
-                    "page_count": res["files_count"],
-                    "file_size": 0
-                }
-                success_dlg = BuildSuccessDialog(meta, self)
+                success_dlg = InquirySuccessDialog(
+                    output_dir=res["output_dir"],
+                    inquiries_count=res["files_count"],
+                    parent=self
+                )
                 success_dlg.exec()
             except Exception as e:
                 prog_dlg.reject()

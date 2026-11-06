@@ -3,13 +3,36 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QCheckBox, QRadioButton, QButtonGroup, QScrollArea,
-    QFrame, QFileDialog, QMessageBox, QProgressBar
+    QFrame, QFileDialog, QMessageBox, QProgressBar, QToolTip
 )
+from PySide6.QtGui import QCursor
 from ui.themes import THEME_FEMININE
 from core.court_parser import CourtParserWorker, parse_court_decision, inflect_fio, to_nomn_fio
 from core.inquiry_generator import TEMPLATES_CONFIG, generate_inquiries
 from ui.progress_dialog import BuildProgressDialog
 from ui.inquiry_success_dialog import InquirySuccessDialog
+
+
+class HintLineEdit(QLineEdit):
+    """
+    Enhanced QLineEdit that displays a tooltip hint directly under the mouse cursor
+    on hover so users can easily identify what the field represents even when filled.
+    """
+    def __init__(self, placeholder: str = "", hint_text: str = "", parent=None):
+        super().__init__(parent)
+        self.setPlaceholderText(placeholder)
+        self.hint_text = hint_text or placeholder
+        self.setToolTip(self.hint_text)
+        self.setObjectName("formLineEdit")
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        if self.hint_text:
+            QToolTip.showText(QCursor.pos(), self.hint_text, self)
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        QToolTip.hideText()
 
 
 class DropArea(QFrame):
@@ -249,7 +272,7 @@ class InquiryGeneratorPanel(QWidget):
         
         row_mgr = QHBoxLayout()
         self.edit_mgr_fio = self._make_input("ФИО управляющего", "ФИО арбитражного / финансового управляющего")
-        self.edit_mgr_fio.setText("")
+        self.edit_mgr_fio.setText("Гусарова Ксения Андреевна")
         self.edit_mgr_phone = self._make_input("Телефон", "Контактный телефон финансового управляющего")
         self.edit_mgr_phone.setText("+7 (913) 989-01-63")
         self.edit_mgr_email = self._make_input("Эл. почта", "Электронная почта финансового управляющего")
@@ -261,9 +284,9 @@ class InquiryGeneratorPanel(QWidget):
 
         row_mgr_ids = QHBoxLayout()
         self.edit_mgr_inn = self._make_input("ИНН управляющего", "ИНН финансового управляющего")
-        self.edit_mgr_inn.setText("")
+        self.edit_mgr_inn.setText("380470431942")
         self.edit_mgr_snils = self._make_input("СНИЛС управляющего", "СНИЛС финансового управляющего")
-        self.edit_mgr_snils.setText("")
+        self.edit_mgr_snils.setText("136-556-599 95")
         self.edit_mgr_addr = self._make_input("Почтовый адрес для корреспонденции", "Почтовый адрес для направления корреспонденции")
         self.edit_mgr_addr.setText("630007, г. Новосибирск, а/я 1")
         row_mgr_ids.addWidget(self.edit_mgr_inn)
@@ -375,12 +398,8 @@ class InquiryGeneratorPanel(QWidget):
         lbl.setObjectName("formSectionHeader")
         return lbl
 
-    def _make_input(self, placeholder: str, tooltip: str = "") -> QLineEdit:
-        le = QLineEdit()
-        le.setPlaceholderText(placeholder)
-        le.setToolTip(tooltip or placeholder)
-        le.setObjectName("formLineEdit")
-        return le
+    def _make_input(self, placeholder: str, tooltip: str = "") -> HintLineEdit:
+        return HintLineEdit(placeholder, tooltip or placeholder, self)
 
     def _on_debtor_name_changed(self, text: str):
         nomn = to_nomn_fio(text.strip())
@@ -441,7 +460,19 @@ class InquiryGeneratorPanel(QWidget):
         self.parse_progress_bar.setValue(val)
         self.parse_status_lbl.setText(msg)
 
-    def _on_parse_finished(self, data: dict):
+    def _on_parse_finished(self, data: dict):
+        if data.get("manager_fio"):
+            self.edit_mgr_fio.setText(data["manager_fio"])
+        if data.get("manager_inn"):
+            self.edit_mgr_inn.setText(data["manager_inn"])
+        if data.get("manager_snils"):
+            self.edit_mgr_snils.setText(data["manager_snils"])
+        if data.get("manager_fio"):
+            self.edit_mgr_fio.setText(data["manager_fio"])
+        if data.get("manager_inn"):
+            self.edit_mgr_inn.setText(data["manager_inn"])
+        if data.get("manager_snils"):
+            self.edit_mgr_snils.setText(data["manager_snils"])
         self.parse_progress_bar.hide()
         self.parse_status_lbl.hide()
 
@@ -517,7 +548,31 @@ class InquiryGeneratorPanel(QWidget):
         self.edit_spouse_addr.clear()
         self.edit_spouse_snils.clear()
         self.edit_spouse_inn.clear()
-        self.edit_marriage_date.clear()
+        self.edit_marriage_date.clear()
+        if not self.edit_mgr_fio.text():
+            self.edit_mgr_fio.setText("Гусарова Ксения Андреевна")
+        if not self.edit_mgr_inn.text():
+            self.edit_mgr_inn.setText("380470431942")
+        if not self.edit_mgr_snils.text():
+            self.edit_mgr_snils.setText("136-556-599 95")
+        if not self.edit_mgr_addr.text():
+            self.edit_mgr_addr.setText("630007, г. Новосибирск, а/я 1")
+        if not self.edit_mgr_phone.text():
+            self.edit_mgr_phone.setText("+7 (913) 989-01-63")
+        if not self.edit_mgr_email.text():
+            self.edit_mgr_email.setText("kseniya_gusarova@mail.ru")
+        if not self.edit_mgr_fio.text():
+            self.edit_mgr_fio.setText("Гусарова Ксения Андреевна")
+        if not self.edit_mgr_inn.text():
+            self.edit_mgr_inn.setText("380470431942")
+        if not self.edit_mgr_snils.text():
+            self.edit_mgr_snils.setText("136-556-599 95")
+        if not self.edit_mgr_addr.text():
+            self.edit_mgr_addr.setText("630007, г. Новосибирск, а/я 1")
+        if not self.edit_mgr_phone.text():
+            self.edit_mgr_phone.setText("+7 (913) 989-01-63")
+        if not self.edit_mgr_email.text():
+            self.edit_mgr_email.setText("kseniya_gusarova@mail.ru")
 
     def get_data_dict(self) -> dict:
         spouse_st = "not_married"

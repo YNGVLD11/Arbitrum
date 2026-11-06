@@ -203,11 +203,10 @@ QGroupBox::title {{
     color: #0369A1;
 }}
 
-/* Splitter - comfortable gap with clearly visible centered divider pill */
+/* Splitter - clearly visible solid divider handle */
 QSplitter::handle:horizontal {{
-    background-color: #7DD3FC;
-    width: 6px;
-    margin: 14px 7px;
+    background-color: #94A3B8;
+    border: none;
     border-radius: 3px;
 }}
 
@@ -702,11 +701,10 @@ QGroupBox::title {{
     color: #800F2F;
 }}
 
-/* Splitter - comfortable gap with soft rose divider pill */
+/* Splitter - clearly visible rose divider handle */
 QSplitter::handle:horizontal {{
     background-color: #F497A9;
-    width: 6px;
-    margin: 14px 7px;
+    border: none;
     border-radius: 3px;
 }}
 

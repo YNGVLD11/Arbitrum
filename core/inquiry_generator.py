@@ -1,8 +1,9 @@
 import os
 import re
 from typing import Dict, Any, List, Optional, Callable
+from datetime import datetime
 import docx
-from docx.shared import Pt
+from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 TEMPLATES_CONFIG = [
@@ -26,39 +27,112 @@ TEMPLATES_CONFIG = [
     {"id": "uvm", "name": "УВМ (МВД по вопросам миграции)", "file": "запрос в УВМ.docx"},
 ]
 
+MONTHS_RU = {
+    1: "января", 2: "февраля", 3: "марта", 4: "апреля", 5: "мая", 6: "июня",
+    7: "июля", 8: "августа", 9: "сентября", 10: "октября", 11: "ноября", 12: "декабря"
+}
+
+
 def to_short_fio(fio_str: str) -> str:
+    """e.g. 'Базаров Николай Николаевич' -> 'Базаров Н. Н.'"""
     parts = fio_str.strip().split()
-    if len(parts) == 3:
+    if len(parts) >= 3:
         return f"{parts[0]} {parts[1][0]}. {parts[2][0]}."
+    elif len(parts) == 2:
+        return f"{parts[0]} {parts[1][0]}."
     return fio_str
 
-def set_paragraph_formatted(p, segments: List[tuple], font_name="Times New Roman", font_size_pt=10, align=WD_ALIGN_PARAGRAPH.JUSTIFY):
-    p.text = ""
-    p.alignment = align
-    for text_val, is_bold in segments:
-        if not text_val:
-            continue
-        run = p.add_run(text_val)
-        run.font.name = font_name
-        run.font.size = Pt(font_size_pt)
-        run.font.bold = is_bold
 
-def replace_in_cell(cell, replacements: Dict[str, str]):
-    for p in cell.paragraphs:
-        full_text = p.text
-        modified = False
-        for k, v in replacements.items():
-            if k in full_text:
-                full_text = full_text.replace(k, v)
-                modified = True
-        if modified:
-            p.text = full_text
-            for run in p.runs:
-                run.font.name = "Times New Roman"
+def to_manager_short_fio(fio_str: str) -> str:
+    """e.g. 'Гусарова Ксения Андреевна' -> 'К. А. Гусарова'"""
+    parts = fio_str.strip().split()
+    if len(parts) >= 3:
+        # Check if already initials
+        if len(parts[0]) == 1 or parts[0].endswith("."):
+            return fio_str
+        return f"{parts[1][0]}. {parts[2][0]}. {parts[0]}"
+    elif len(parts) == 2:
+        return f"{parts[1][0]}. {parts[0]}"
+    return fio_str
+
+
+def calc_3_years_ago(date_str: str) -> str:
+    """
+    Given DD.MM.YYYY, returns DD.MM.(YYYY-3).
+    If invalid or empty, uses current date - 3 years.
+    """
+    if date_str:
+        m = re.search(r'(\d{1,2})\.(\d{1,2})\.(\d{4})', date_str)
+        if m:
+            d, mth, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            try:
+                dt = datetime(y - 3, mth, d)
+                return dt.strftime("%d.%m.%Y")
+            except ValueError:
+                return f"{d:02d}.{mth:02d}.{y-3}"
+    now = datetime.now()
+    try:
+        dt = datetime(now.year - 3, now.month, now.day)
+        return dt.strftime("%d.%m.%Y")
+    except ValueError:
+        return f"{now.day:02d}.{now.month:02d}.{now.year-3}"
+
+
+def format_russian_date_words(date_str: str = "") -> str:
+    """Returns '«07» мая 2026 г.' based on date_str or current date."""
+    now = datetime.now()
+    d, m, y = now.day, now.month, now.year
+    if date_str:
+        match = re.search(r'(\d{1,2})\.(\d{1,2})\.(\d{4})', date_str)
+        if match:
+            d, m, y = int(match.group(1)), int(match.group(2)), int(match.group(3))
+    mon = MONTHS_RU.get(m, "")
+    return f"«{d:02d}» {mon} {y} г."
+
 
 def delete_paragraph(paragraph):
     p_elem = paragraph._p
     p_elem.getparent().remove(p_elem)
+
+
+def replace_tokens_in_paragraph(p, bold_map: Dict[str, str], font_name: str = "Times New Roman"):
+    """
+    Replaces {{TAG}} tokens in paragraph text.
+    Inserted fields are rendered in BOLD (bold=True), pure black RGB(0, 0, 0),
+    while boilerplate text is rendered regular (bold=False).
+    """
+    text = p.text
+    if "{{" not in text:
+        return
+
+    # Check if the entire paragraph was previously bold
+    all_was_bold = all(r.bold for r in p.runs) if p.runs else False
+
+    pattern = re.compile(r'(\{\{[A-Z0-9_]+\}\})')
+    tokens = pattern.split(text)
+
+    p.text = ""
+    for token in tokens:
+        if not token:
+            continue
+        if token in bold_map:
+            val = bold_map[token]
+            if val:
+                run = p.add_run(val)
+                run.bold = True
+                run.font.name = font_name
+                run.font.color.rgb = RGBColor(0, 0, 0)
+        else:
+            run = p.add_run(token)
+            run.bold = all_was_bold
+            run.font.name = font_name
+            run.font.color.rgb = RGBColor(0, 0, 0)
+
+
+def replace_tokens_in_cell(cell, bold_map: Dict[str, str], font_name: str = "Times New Roman"):
+    for p in cell.paragraphs:
+        replace_tokens_in_paragraph(p, bold_map, font_name)
+
 
 def generate_single_inquiry(
     template_path: str,
@@ -67,8 +141,7 @@ def generate_single_inquiry(
 ):
     doc = docx.Document(template_path)
 
-    court_name = data.get("court_name", "").strip() or "Арбитражного суда"
-    # Ensure genitive form of court if needed: "Решением Арбитражного суда Новосибирской области"
+    court_name = data.get("court_name", "").strip() or "Арбитражный суд"
     if court_name.startswith("Арбитражный суд"):
         court_dec_str = "Арбитражного суда" + court_name[15:]
     else:
@@ -76,47 +149,39 @@ def generate_single_inquiry(
 
     case_no = data.get("case_number", "").strip()
     decision_date = data.get("decision_date", "").strip()
+    three_years_ago_date = calc_3_years_ago(decision_date)
+    inquiry_date_str = format_russian_date_words(decision_date)
+
+    # Debtor
     debtor_fio = data.get("debtor_fio", "").strip()
     debtor_fio_gen = data.get("debtor_fio_gen", "").strip() or debtor_fio
+    debtor_fio_instr = data.get("debtor_fio_instr", "").strip() or debtor_fio
+    debtor_short_fio = to_short_fio(debtor_fio)
     debtor_birth = data.get("debtor_birth_date", "").strip()
     debtor_place = data.get("debtor_birth_place", "").strip()
     debtor_snils = data.get("debtor_snils", "").strip()
     debtor_inn = data.get("debtor_inn", "").strip()
     debtor_address = data.get("debtor_address", "").strip()
 
-    # Debtor passport block
     pass_series = data.get("debtor_passport_series", "").strip()
     pass_num = data.get("debtor_passport_number", "").strip()
     pass_by = data.get("debtor_passport_issued_by", "").strip()
     pass_date = data.get("debtor_passport_date", "").strip()
     pass_code = data.get("debtor_passport_code", "").strip()
 
-    if pass_series and pass_num:
-        pass_block = f", паспорт {pass_series} {pass_num}"
-        if pass_by:
-            pass_block += f", выдан {pass_by}"
-        if pass_date:
-            pass_block += f" {pass_date}"
-        if pass_code:
-            pass_block += f", код подразделения {pass_code}"
-    else:
-        pass_block = ""
-
-    # Manager
-    manager_fio = data.get("manager_fio", "").strip()
-    manager_inn = data.get("manager_inn", "").strip()
-    manager_snils = data.get("manager_snils", "").strip()
-    manager_sro = data.get("manager_sro", 'САМРО "Ассоциация антикризисных управляющих"').strip()
-    manager_sro_ogrn = data.get("manager_sro_ogrn", "1026300003751").strip()
-    manager_sro_inn = data.get("manager_sro_inn", "6315944042").strip()
-    manager_sro_address = data.get("manager_sro_address", "443072, г. Самара, Московское шоссе, 18-й км").strip()
-    manager_corr_address = data.get("manager_corr_address", "630007, г. Новосибирск, а/я 1").strip()
-    manager_phone = data.get("manager_phone", "+7 (913) 989-01-63").strip()
-    manager_email = data.get("manager_email", "kseniya_gusarova@mail.ru").strip()
+    # Manager (fixed Gusarova Ksenia Andreevna)
+    manager_fio = data.get("manager_fio", "").strip() or "Гусарова Ксения Андреевна"
+    manager_short_fio = to_manager_short_fio(manager_fio)
+    manager_inn = data.get("manager_inn", "").strip() or "380470431942"
+    manager_snils = data.get("manager_snils", "").strip() or "136-556-599 95"
+    manager_corr_address = data.get("manager_corr_address", "").strip() or "630007, г. Новосибирск, а/я 1"
+    manager_phone = data.get("manager_phone", "").strip() or "+7 (913) 989-01-63"
+    manager_email = data.get("manager_email", "").strip() or "kseniya_gusarova@mail.ru"
 
     # Spouse
     spouse_status = data.get("spouse_status", "not_married")  # 'married', 'divorced', 'not_married'
     spouse_fio = data.get("spouse_fio", "").strip()
+    spouse_fio_gen = data.get("spouse_fio_gen", "").strip() or spouse_fio
     spouse_fio_instr = data.get("spouse_fio_instr", "").strip() or spouse_fio
     spouse_birth = data.get("spouse_birth_date", "").strip()
     spouse_place = data.get("spouse_birth_place", "").strip()
@@ -125,180 +190,17 @@ def generate_single_inquiry(
     spouse_inn = data.get("spouse_inn", "").strip()
     marriage_date = data.get("marriage_date", "").strip()
 
+    spouse_pass_s = data.get("spouse_passport_series", "").strip()
+    spouse_pass_n = data.get("spouse_passport_number", "").strip()
+    spouse_pass_b = data.get("spouse_passport_issued_by", "").strip()
+    spouse_pass_d = data.get("spouse_passport_date", "").strip()
+    spouse_pass_c = data.get("spouse_passport_code", "").strip()
+
     has_spouse = (spouse_status in ("married", "divorced")) and bool(spouse_fio)
 
-    # 1. Header (P0, P2)
-    if len(doc.paragraphs) > 0:
-        p0 = doc.paragraphs[0]
-        if "финансовый управляющий" in p0.text.lower():
-            set_paragraph_formatted(p0, [
-                ("Финансовый управляющий ", False),
-                (f"{debtor_fio_gen} ", True),
-                (f"{manager_fio} ", False)
-            ], font_size_pt=8, align=WD_ALIGN_PARAGRAPH.LEFT)
-
-    if len(doc.paragraphs) > 2:
-        p2 = doc.paragraphs[2]
-        if "контактный телефон" in p2.text.lower():
-            set_paragraph_formatted(p2, [
-                (f"{manager_corr_address}. Контактный телефон: {manager_phone}, эл.почта: {manager_email}", False)
-            ], font_size_pt=8, align=WD_ALIGN_PARAGRAPH.LEFT)
-
-    # 2. Decision Paragraph & Manager Paragraph
-    idx_decision = -1
-    idx_manager = -1
-    idx_spouse = -1
-
-    for idx, p in enumerate(doc.paragraphs):
-        txt = p.text.strip()
-        if txt.startswith("Решением") and "признан несостоятельным" in txt:
-            idx_decision = idx
-        elif txt.startswith("Финансовым управляющим утвержден"):
-            idx_manager = idx
-        elif "в рамках дела о банкротстве установлено, что должник состо" in txt.lower():
-            idx_spouse = idx
-
-    # Format Decision Paragraph with BOLD inserted fields
-    if idx_decision != -1:
-        p_dec = doc.paragraphs[idx_decision]
-        dec_segments = [
-            ("Решением ", False),
-            (f"{court_dec_str} ", True),
-            ("от ", False),
-            (f"{decision_date} г. ", True),
-            ("по делу № ", False),
-            (f"{case_no} ", True),
-            (f"{debtor_fio} ", True),
-            ("(дата рождения: ", False),
-            (f"{debtor_birth}", True),
-            (", место рождения: ", False),
-            (f"{debtor_place}", True),
-            (", СНИЛС ", False),
-            (f"{debtor_snils}", True),
-            (", ИНН ", False),
-            (f"{debtor_inn}", True),
-            (", регистрация по месту жительства: ", False),
-            (f"{debtor_address}", True)
-        ]
-        if pass_series and pass_num:
-            dec_segments.extend([
-                (", паспорт ", False),
-                (f"{pass_series} {pass_num}", True)
-            ])
-            if pass_by:
-                dec_segments.extend([
-                    (", выдан ", False),
-                    (f"{pass_by}", True)
-                ])
-            if pass_date:
-                dec_segments.append((f" {pass_date}", True))
-            if pass_code:
-                dec_segments.extend([
-                    (", код подразделения ", False),
-                    (f"{pass_code}", True)
-                ])
-        dec_segments.append((") (далее по тексту – должник) признан несостоятельным (банкротом) и введена процедура реализации имущества гражданина.", False))
-        set_paragraph_formatted(p_dec, dec_segments, font_size_pt=10, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
-
-    # Format Manager Paragraph with BOLD inserted fields
-    if idx_manager != -1:
-        p_mgr = doc.paragraphs[idx_manager]
-        set_paragraph_formatted(p_mgr, [
-            ("Финансовым управляющим утверждена ", False),
-            (f"{manager_fio} ", True),
-            ("(ИНН ", False),
-            (f"{manager_inn}", True),
-            (", СНИЛС ", False),
-            (f"{manager_snils}", True),
-            (f") - член {manager_sro} (ОГРН {manager_sro_ogrn}, ИНН {manager_sro_inn}, адрес: {manager_sro_address}).", False)
-        ], font_size_pt=10, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
-
-    # Format Spouse Paragraph with BOLD inserted fields
-    if has_spouse:
-        status_word = "состоит в браке" if spouse_status == "married" else "состоял в браке"
-        status_label = "супруг должника" if spouse_status == "married" else "бывший супруг должника"
-        action_word = "Брак зарегистрирован" if spouse_status == "married" else "Брак расторгнут"
-
-        spouse_segments = [
-            (f"В рамках дела о банкротстве установлено, что должник {status_word} с ", False),
-            (f"{spouse_fio_instr} ", True),
-            ("(дата рождения: ", False),
-            (f"{spouse_birth}", True),
-            (", место рождения: ", False),
-            (f"{spouse_place}", True),
-            (", СНИЛС: ", False),
-            (f"{spouse_snils}", True),
-            (" ИНН: ", False),
-            (f"{spouse_inn}", True),
-            (", регистрация по месту жительства: ", False),
-            (f"{spouse_address}", True),
-            (f") (далее по тексту – {status_label}).", False)
-        ]
-        if marriage_date:
-            spouse_segments.extend([
-                (f" {action_word} ", False),
-                (f"{marriage_date} г.", True)
-            ])
-
-        if idx_spouse != -1:
-            p_sp = doc.paragraphs[idx_spouse]
-            set_paragraph_formatted(p_sp, spouse_segments, font_size_pt=10, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
-        else:
-            if idx_manager != -1 and idx_manager + 1 < len(doc.paragraphs):
-                p_sp = doc.paragraphs[idx_manager + 1].insert_paragraph_before()
-            else:
-                p_sp = doc.add_paragraph()
-            set_paragraph_formatted(p_sp, spouse_segments, font_size_pt=10, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
-    else:
-        if idx_spouse != -1:
-            delete_paragraph(doc.paragraphs[idx_spouse])
-
-    # 3. Handle Bullet points in requests ("- в отношении должника", "- в отношении супруга должника")
-    to_delete = []
-    for p in doc.paragraphs:
-        txt = p.text.strip()
-        if txt.startswith(("- в отношении должника", "– в отношении должника")):
-            set_paragraph_formatted(p, [
-                ("- в отношении должника: ", True),
-                (f"{debtor_fio} ", True),
-                ("(дата рождения: ", False),
-                (f"{debtor_birth}", True),
-                (", место рождения: ", False),
-                (f"{debtor_place}", True),
-                (", СНИЛС: ", False),
-                (f"{debtor_snils}", True),
-                (", ИНН: ", False),
-                (f"{debtor_inn}", True),
-                (", регистрация по месту жительства: ", False),
-                (f"{debtor_address}", True),
-                ("):", False)
-            ], font_size_pt=10, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
-        elif txt.startswith(("- в отношении супруга", "– в отношении супруга")):
-            if has_spouse:
-                set_paragraph_formatted(p, [
-                    ("- в отношении супруга должника: ", True),
-                    (f"{spouse_fio} ", True),
-                    ("(дата рождения: ", False),
-                    (f"{spouse_birth}", True),
-                    (", место рождения: ", False),
-                    (f"{spouse_place}", True),
-                    (", СНИЛС: ", False),
-                    (f"{spouse_snils}", True),
-                    (", ИНН: ", False),
-                    (f"{spouse_inn}", True),
-                    (", регистрация по месту жительства: ", False),
-                    (f"{spouse_address}", True),
-                    ("):", False)
-                ], font_size_pt=10, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
-            else:
-                to_delete.append(p)
-
-    for p in to_delete:
-        delete_paragraph(p)
-
-    # 4. Handle Specific Templates logic
     base_name = os.path.basename(template_path)
 
+    # 1. Template-specific structural adjustments
     # A) Должнику_супругу_РИ.docx
     if "Должнику_супругу" in base_name and len(doc.tables) > 0:
         table0 = doc.tables[0]
@@ -308,79 +210,153 @@ def generate_single_inquiry(
                 c.text = f"{debtor_fio}\n{debtor_address}\n{spouse_fio}\n{spouse_address}"
             else:
                 c.text = f"{debtor_fio}\n{debtor_address}"
-            for p in c.paragraphs:
-                for r in p.runs:
-                    r.font.name = "Times New Roman"
+            for cp in c.paragraphs:
+                for cr in cp.runs:
+                    cr.font.name = "Times New Roman"
 
-    # B) в_ССП_РИ.docx
+    # B) в_ЕГРН_(сокращенный)_должник_супруг_РИ.docx
+    if "ЕГРН" in base_name and not has_spouse:
+        # Tables 3, 4, 5 are for spouse - remove them if single
+        while len(doc.tables) > 3:
+            t = doc.tables[3]
+            t_elem = t._tbl
+            t_elem.getparent().remove(t_elem)
+        # Remove subsequent paragraphs 3+
+        while len(doc.paragraphs) > 3:
+            delete_paragraph(doc.paragraphs[3])
+
+    # C) в_ССП_РИ.docx
     if "в_ССП" in base_name:
         for p in doc.paragraphs:
             if "переданных " in p.text and "для исполнения" in p.text:
-                debtor_instr = data.get("debtor_fio_instr", "") or debtor_fio
+                debtor_instr = debtor_fio_instr or debtor_fio
                 p.text = re.sub(r'переданных [^для]+? для исполнения', f'переданных {debtor_instr} для исполнения', p.text)
             if "в отношении " in p.text and "и направить" in p.text:
                 p.text = re.sub(r'в отношении [^и]+?, и направить', f'в отношении {debtor_fio_gen}, и направить', p.text)
 
-    # C) запрос в УВМ.docx
+    # D) запрос в УВМ.docx
     if "в УВМ" in base_name:
         for p in doc.paragraphs:
             if "являются кредиторами" in p.text:
-                short_fio = to_short_fio(debtor_fio)
                 p.text = re.sub(r'являются кредиторами [^\.]*?\.', f'являются кредиторами {debtor_fio_gen}.', p.text)
-                p.text = re.sub(r'в отношении [^\.]*?$', f'в отношении {short_fio}', p.text)
+                p.text = re.sub(r'в отношении [^\.]*?$', f'в отношении {debtor_short_fio}', p.text)
 
-    # D) в_ЕГРН_(сокращенный)_должник_супруг_РИ.docx
-    if "ЕГРН" in base_name:
-        debtor_egrn_block = (
-            f"физическое лицо:\n"
-            f"фамилия, имя, отчество (при наличии) {debtor_fio}\n"
-            f"дата рождения {debtor_birth}; документ, удостоверяющий личность, паспорт, "
-            f"серия {pass_series} № {pass_num}, дата выдачи: {pass_date} г., "
-            f"кем выдан документ, удостоверяющий личность, {pass_by}, код подразделения {pass_code},\n"
-            f"СНИЛС {debtor_snils}\n"
-            f"адрес места жительства или места пребывания: {debtor_address}"
-        )
-        spouse_pass_s = data.get("spouse_passport_series", "")
-        spouse_pass_n = data.get("spouse_passport_number", "")
-        spouse_pass_b = data.get("spouse_passport_issued_by", "")
-        spouse_pass_d = data.get("spouse_passport_date", "")
-        spouse_pass_c = data.get("spouse_passport_code", "")
+    # 2. Spouse logic & Paragraph filtering
+    if has_spouse:
+        if spouse_status == "divorced":
+            for p in doc.paragraphs:
+                if "состоит в браке с" in p.text:
+                    p.text = p.text.replace("состоит в браке с", "состоял в браке с")
+                    p.text = p.text.replace("супруг должника", "бывший супруг должника")
+                    p.text = p.text.replace("Брак зарегистрирован", "Брак расторгнут")
+                if "Копия свидетельства о заключении брака" in p.text:
+                    p.text = p.text.replace("Копия свидетельства о заключении брака", "Копия свидетельства о расторжении брака")
+    else:
+        # Debtor is single: remove paragraphs purely dedicated to spouse
+        to_delete = []
+        delete_subsequent_bullets = False
+        for p in doc.paragraphs:
+            txt = p.text.strip()
+            if txt.startswith("В рамках дела о банкротстве установлено, что должник состо"):
+                to_delete.append(p)
+            elif txt.startswith("В соответствии с п. 1 ст. 34 Семейного кодекса"):
+                to_delete.append(p)
+            elif txt.startswith("Копия свидетельства о заключении брака") or txt.startswith("Копия свидетельства о расторжении брака"):
+                to_delete.append(p)
+            elif txt.startswith(("- в отношении супруга", "– в отношении супруга")):
+                to_delete.append(p)
+                delete_subsequent_bullets = True
+            elif delete_subsequent_bullets:
+                if txt.startswith(("•", "о ", "сведения об ", "Приложении")) and not txt.startswith(("В целях", "Обращаю", "При отсутствии", "Ч.", "Согласно", "Напоминаю", "Документы")):
+                    to_delete.append(p)
+                else:
+                    delete_subsequent_bullets = False
+            elif "маломерных судах, зарегистрированных за супругом" in txt:
+                to_delete.append(p)
+            elif "находящееся в совместной собственности должника и его супруга" in txt:
+                to_delete.append(p)
+            elif "заключенных с супругой должника" in txt:
+                p.text = p.text.replace(", а также о договорах аренды имущества, заключенных с супругой должника", "")
 
-        spouse_egrn_block = (
-            f"физическое лицо:\n"
-            f"фамилия, имя, отчество (при наличии) {spouse_fio}\n"
-            f"дата рождения {spouse_birth}; документ, удостоверяющий личность, паспорт, "
-            f"серия {spouse_pass_s} № {spouse_pass_n}, дата выдачи: {spouse_pass_d} г., "
-            f"кем выдан документ, удостоверяющий личность, {spouse_pass_b}, код подразделения {spouse_pass_c},\n"
-            f"СНИЛС {spouse_snils}\n"
-            f"адрес места жительства или места пребывания: {spouse_address}"
-        )
+        for p in to_delete:
+            try:
+                delete_paragraph(p)
+            except Exception:
+                pass
 
-        court_ref_str = f"Решение {court_name} от {decision_date} № {case_no}. Копия в количестве ____ экз., на ____ л."
+    # 3. Handle Debtor Passport omission if passport fields empty
+    if not (pass_series and pass_num):
+        pass_pattern = re.compile(r',\s*паспорт\s*\{\{DEBTOR_PASS_SERIES\}\}\s*\{\{DEBTOR_PASS_NUMBER\}\}[^)]*?\)')
+        for p in doc.paragraphs:
+            if "{{DEBTOR_PASS_SERIES}}" in p.text:
+                p.text = pass_pattern.sub(")", p.text)
 
-        for table in doc.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    ct = cell.text
-                    if "{{DEBTOR_FIO}}" in ct or "физическое лицо:" in ct and "1.1." in ct:
-                        cell.text = debtor_egrn_block
-                    elif "{{SPOUSE_FIO}}" in ct:
-                        cell.text = spouse_egrn_block
-                    elif "Решение Арбитражного суда" in ct:
-                        cell.text = court_ref_str
+    # 4. Comprehensive Bold Replacement Map
+    bold_map = {
+        "{{CASE_NUMBER}}": case_no,
+        "{{COURT_NAME_GEN}}": court_dec_str,
+        "{{DECISION_DATE}}": decision_date,
+        "{{DEBTOR_FIO}}": debtor_fio,
+        "{{DEBTOR_FIO_GEN}}": debtor_fio_gen,
+        "{{DEBTOR_FIO_INSTR}}": debtor_fio_instr,
+        "{{DEBTOR_SHORT_FIO}}": debtor_short_fio,
+        "{{DEBTOR_BIRTH_DATE}}": debtor_birth,
+        "{{DEBTOR_BIRTH_PLACE}}": debtor_place,
+        "{{DEBTOR_SNILS}}": debtor_snils,
+        "{{DEBTOR_INN}}": debtor_inn,
+        "{{DEBTOR_ADDRESS}}": debtor_address,
+        "{{DEBTOR_PASS_SERIES}}": pass_series,
+        "{{DEBTOR_PASS_NUMBER}}": pass_num,
+        "{{DEBTOR_PASS_ISSUED_BY}}": pass_by,
+        "{{DEBTOR_PASS_DATE}}": pass_date,
+        "{{DEBTOR_PASS_CODE}}": pass_code,
+        "{{MANAGER_FIO}}": manager_fio,
+        "{{MANAGER_SHORT_FIO}}": manager_short_fio,
+        "{{MANAGER_INN}}": manager_inn,
+        "{{MANAGER_SNILS}}": manager_snils,
+        "{{THREE_YEARS_AGO_DATE}}": three_years_ago_date,
+        "{{INQUIRY_DATE_STR}}": inquiry_date_str,
+        "{{MARRIAGE_DATE}}": marriage_date,
+        "{{SPOUSE_FIO}}": spouse_fio,
+        "{{SPOUSE_FIO_GEN}}": spouse_fio_gen,
+        "{{SPOUSE_FIO_INSTR}}": spouse_fio_instr,
+        "{{SPOUSE_BIRTH_DATE}}": spouse_birth,
+        "{{SPOUSE_BIRTH_PLACE}}": spouse_place,
+        "{{SPOUSE_ADDRESS}}": spouse_address,
+        "{{SPOUSE_SNILS}}": spouse_snils,
+        "{{SPOUSE_INN}}": spouse_inn,
+        "{{SPOUSE_PASS_SERIES}}": spouse_pass_s,
+        "{{SPOUSE_PASS_NUMBER}}": spouse_pass_n,
+        "{{SPOUSE_PASS_ISSUED_BY}}": spouse_pass_b,
+        "{{SPOUSE_PASS_DATE}}": spouse_pass_d,
+        "{{SPOUSE_PASS_CODE}}": spouse_pass_c,
+    }
 
-    # 5. Update signatures and generic names in all tables
+    # 5. Process all Document Paragraphs
+    for p in doc.paragraphs:
+        replace_tokens_in_paragraph(p, bold_map)
+
+    # 6. Process all Tables and Cells
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
-                ct = cell.text
-                if any(k in ct for k in ["{{DEBTOR_FIO_GEN}}", "{{DEBTOR_FIO}}", "финансовый управляющий"]):
-                    replace_in_cell(cell, {
-                        "{{DEBTOR_FIO_GEN}}": debtor_fio_gen,
-                        "{{DEBTOR_FIO}}": debtor_fio,
-                    })
+                replace_tokens_in_cell(cell, bold_map)
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    # 7. Final safety clean: remove any accidental remaining {{...}} tags
+    for p in doc.paragraphs:
+        if "{{" in p.text:
+            p.text = re.sub(r'\{\{[A-Z0-9_]+\}\}', '', p.text)
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                if "{{" in cell.text:
+                    for cp in cell.paragraphs:
+                        if "{{" in cp.text:
+                            cp.text = re.sub(r'\{\{[A-Z0-9_]+\}\}', '', cp.text)
+
+    out_dir = os.path.dirname(output_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
     doc.save(output_path)
 
 

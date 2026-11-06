@@ -38,7 +38,7 @@ class Sidebar(QFrame):
         self.theme = theme
         self.current_page = 0
         self.setObjectName("sidebarFrame")
-        self.setFixedWidth(180)
+        self.setFixedWidth(170)
 
         self._init_ui()
         self.set_theme(theme)

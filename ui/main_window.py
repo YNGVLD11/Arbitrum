@@ -29,10 +29,21 @@ class BuildWorker(QThread):
     finished = Signal(dict)
     failed = Signal(str)
 
-    def __init__(self, file_paths: list[str], output_path: str, new_sheet_for_landscape: bool):
+    def __init__(
+        self,
+        file_paths: list[str],
+        output_path: str,
+        layout_mode: str = "2up",
+        output_format: str = "pdf",
+        rotations: dict = None,
+        new_sheet_for_landscape: bool = True
+    ):
         super().__init__()
         self.file_paths = file_paths
         self.output_path = output_path
+        self.layout_mode = layout_mode
+        self.output_format = output_format
+        self.rotations = rotations or {}
         self.new_sheet_for_landscape = new_sheet_for_landscape
         self._is_cancelled = False
 
@@ -46,6 +57,9 @@ class BuildWorker(QThread):
                 output_path=self.output_path,
                 progress_callback=self._on_progress,
                 is_cancelled=lambda: self._is_cancelled,
+                layout_mode=self.layout_mode,
+                output_format=self.output_format,
+                rotations=self.rotations,
                 new_sheet_for_landscape=self.new_sheet_for_landscape
             )
             self.finished.emit(res)
@@ -112,6 +126,7 @@ class MainWindow(QMainWindow):
         # Left: File List Panel
         self.file_list_panel = FileListPanel(theme=self.current_theme, parent=self)
         self.file_list_panel.file_selected.connect(self._on_file_selected)
+        self.file_list_panel.file_rotation_changed.connect(self._on_file_rotation_changed)
         self.file_list_panel.file_list_changed.connect(self._update_build_button_state)
         self.splitter.addWidget(self.file_list_panel)
 
@@ -194,14 +209,23 @@ class MainWindow(QMainWindow):
         new_theme = self.app_settings.theme
         if new_theme != self.current_theme:
             self._apply_theme(new_theme)
+        self._update_build_button_state()
 
     def _on_file_selected(self, file_path: str):
-        self.preview_panel.set_document(file_path)
+        rot = self.file_list_panel.get_rotation(file_path)
+        self.preview_panel.set_document(file_path, rotation=rot)
+
+    def _on_file_rotation_changed(self, file_path: str, rotation: int):
+        if self.preview_panel.current_file_path == file_path:
+            self.preview_panel.set_rotation(rotation)
 
     def _update_build_button_state(self):
         paths = self.file_list_panel.get_file_paths()
         count = len(paths)
         self.build_btn.setEnabled(count > 0)
+        fmt = self.app_settings.output_format.lower()
+        btn_txt = "Собрать docx-файл" if fmt == "docx" else "Собрать pdf-файл"
+        self.build_btn.setText(btn_txt)
         if count == 0:
             self.preview_panel.clear_preview()
         elif self.file_list_panel.list_widget.currentRow() < 0:
@@ -221,14 +245,21 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Ошибка папки", f"Не удалось создать папку:\n{out_dir}\n{e}")
                 return
 
+        fmt = self.app_settings.output_format.lower()
+        ext = ".docx" if fmt == "docx" else ".pdf"
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        out_filename = f"Отчет_АУ_{timestamp}.pdf"
+        out_filename = f"Отчет_АУ_{timestamp}{ext}"
         out_path = os.path.join(out_dir, out_filename)
+
+        rotations = self.file_list_panel.get_file_rotations()
 
         self.progress_dlg = BuildProgressDialog(self)
         self.worker = BuildWorker(
             file_paths=paths,
             output_path=out_path,
+            layout_mode=self.app_settings.layout_mode,
+            output_format=fmt,
+            rotations=rotations,
             new_sheet_for_landscape=self.app_settings.new_sheet_for_landscape
         )
 

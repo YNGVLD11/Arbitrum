@@ -44,11 +44,24 @@ class BuildSuccessDialog(QDialog):
         header_layout.addWidget(icon_lbl)
 
         title_layout = QVBoxLayout()
-        title_lbl = QLabel("PDF-документ успешно собран!")
+        is_docx = self.output_path.lower().endswith(".docx")
+        layout_mode = self.result_meta.get("layout_mode", "2up")
+
+        if is_docx:
+            t_txt = "Word-документ успешно собран!"
+            s_txt = "Документы объединены в единый файл Word (.docx)"
+        elif layout_mode == "standard":
+            t_txt = "PDF-документ успешно собран!"
+            s_txt = "Документы объединены со стандартным размером страниц"
+        else:
+            t_txt = "PDF-документ успешно собран!"
+            s_txt = "Файл скомпонован в формате A4 2-на-лист"
+
+        title_lbl = QLabel(t_txt)
         title_lbl.setStyleSheet("font-size: 16px; font-weight: 700; color: #16A34A;")
         title_layout.addWidget(title_lbl)
 
-        sub_lbl = QLabel("Файл скомпонован в строгом соответствии с форматом A4 2-на-лист")
+        sub_lbl = QLabel(s_txt)
         sub_lbl.setStyleSheet("color: #64748B; font-size: 11px;")
         title_layout.addWidget(sub_lbl)
         header_layout.addLayout(title_layout, stretch=1)
@@ -66,10 +79,15 @@ class BuildSuccessDialog(QDialog):
         card_layout.addWidget(name_lbl)
 
         sheets = self.result_meta.get("total_sheets", 0)
-        pages = self.result_meta.get("total_source_pages", 0)
-        size = format_file_size(self.result_meta.get("file_size", 0))
+        pages = self.result_meta.get("total_input_pages", 0) or self.result_meta.get("total_source_pages", 0)
+        size = format_file_size(self.result_meta.get("file_size", 0) or self.result_meta.get("output_size_bytes", 0))
 
-        details_lbl = QLabel(f"Листов A4 (2-up): <b>{sheets}</b>  •  Исходных страниц: <b>{pages}</b>  •  Размер: <b>{size}</b>")
+        if is_docx or layout_mode == "standard":
+            d_txt = f"Страниц: <b>{pages}</b>  •  Размер: <b>{size}</b>"
+        else:
+            d_txt = f"Листов A4 (2-up): <b>{sheets}</b>  •  Исходных страниц: <b>{pages}</b>  •  Размер: <b>{size}</b>"
+
+        details_lbl = QLabel(d_txt)
         details_lbl.setStyleSheet("color: #475569; font-size: 12px;")
         card_layout.addWidget(details_lbl)
 

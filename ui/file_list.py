@@ -24,13 +24,15 @@ class FileItemWidget(QFrame):
     All labels are non-interactive; only the ✕ button responds to clicks.
     """
     delete_clicked = Signal(str)
+    rotation_changed = Signal(str, int)
 
-    def __init__(self, file_path: str, index: int, theme: str = "light", list_widget=None, parent=None):
+    def __init__(self, file_path: str, index: int, theme: str = "light", list_widget=None, initial_rotation: int = 0, parent=None):
         super().__init__(parent)
         self.file_path = file_path
         self.index = index
         self.theme = theme
         self.list_widget = list_widget
+        self.rotation = initial_rotation % 360
         self.is_selected = False
         self.setFixedHeight(56)
 
@@ -104,13 +106,21 @@ class FileItemWidget(QFrame):
         self._update_text_style()
         info_layout.addWidget(self.name_lbl)
 
-        size_str = format_file_size(os.path.getsize(file_path)) if os.path.exists(file_path) else "0 Б"
-        self.sub_lbl = QLabel(f"{size_str}  •  {file_path}")
+        self.sub_lbl = QLabel()
         self.sub_lbl.setStyleSheet("color: #64748B; font-size: 11px;")
         self.sub_lbl.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._update_sub_label()
         info_layout.addWidget(self.sub_lbl)
 
         layout.addLayout(info_layout, stretch=1)
+
+        # 3.5. Rotate button (⟳)
+        self.rotate_btn = QPushButton("⟳")
+        self.rotate_btn.setFixedSize(26, 26)
+        self.rotate_btn.setToolTip("Повернуть документ на 90° (изменить ориентацию)")
+        self._update_rotate_btn_style()
+        self.rotate_btn.clicked.connect(self._on_rotate_clicked)
+        layout.addWidget(self.rotate_btn)
 
         # 4. Remove button (✕)
         self.del_btn = QPushButton("✕")
@@ -133,6 +143,41 @@ class FileItemWidget(QFrame):
         """)
         self.del_btn.clicked.connect(lambda: self.delete_clicked.emit(self.file_path))
         layout.addWidget(self.del_btn)
+
+    def _update_rotate_btn_style(self):
+        hover_bg = "#FFE4E8" if self.theme == THEME_FEMININE else "#E2E8F0"
+        hover_col = "#FF4D6D" if self.theme == THEME_FEMININE else "#0284C7"
+        self.rotate_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                border: none;
+                color: #64748B;
+                font-weight: bold;
+                font-size: 15px;
+                border-radius: 13px;
+                padding: 0px;
+            }}
+            QPushButton:hover {{
+                background-color: {hover_bg};
+                color: {hover_col};
+            }}
+        """)
+
+    def _update_sub_label(self):
+        size_str = format_file_size(os.path.getsize(self.file_path)) if os.path.exists(self.file_path) else "0 Б"
+        rot_str = f"  •  Поворот: {self.rotation}°" if self.rotation != 0 else ""
+        self.sub_lbl.setText(f"{size_str}{rot_str}  •  {self.file_path}")
+
+    def _on_rotate_clicked(self):
+        self.rotation = (self.rotation + 90) % 360
+        self._update_sub_label()
+        if self.list_widget:
+            for r in range(self.list_widget.count()):
+                it = self.list_widget.item(r)
+                if self.list_widget.itemWidget(it) is self:
+                    self.list_widget.setCurrentRow(r)
+                    break
+        self.rotation_changed.emit(self.file_path, self.rotation)
 
     def _update_card_style(self):
         if self.theme == THEME_FEMININE:
@@ -214,6 +259,7 @@ class FileItemWidget(QFrame):
         self._update_card_style()
         self._update_badge_style()
         self._update_text_style()
+        self._update_rotate_btn_style()
 
     def update_index(self, index: int):
         self.index = index
@@ -364,12 +410,14 @@ class FileListPanel(QFrame):
     Maintains clean data state and ensures widgets never collapse or disappear.
     """
     file_selected = Signal(str)
+    file_rotation_changed = Signal(str, int)
     file_list_changed = Signal()
 
     def __init__(self, theme: str = "light", parent=None):
         super().__init__(parent)
         self.theme = theme
         self.file_paths = []
+        self.file_rotations = {}
         self.setObjectName("cardFrame")
         self._init_ui()
 
@@ -475,8 +523,12 @@ class FileListPanel(QFrame):
             item.setSizeHint(QSize(200, 62))
             self.list_widget.addItem(item)
 
-            widget = FileItemWidget(path, idx, theme=self.theme, list_widget=self.list_widget)
+            widget = FileItemWidget(
+                path, idx, theme=self.theme, list_widget=self.list_widget,
+                initial_rotation=self.file_rotations.get(path, 0)
+            )
             widget.delete_clicked.connect(self.remove_by_path)
+            widget.rotation_changed.connect(self._on_item_rotation_changed)
             self.list_widget.setItemWidget(item, widget)
 
         count = len(self.file_paths)
@@ -571,6 +623,17 @@ class FileListPanel(QFrame):
             self._sync_items(selected_path=moved_path)
             self.file_list_changed.emit()
 
+    def _on_item_rotation_changed(self, file_path: str, rotation: int):
+        self.file_rotations[file_path] = rotation
+        self.file_rotation_changed.emit(file_path, rotation)
+
+    def get_file_rotations(self) -> dict:
+        return {p: self.file_rotations.get(p, 0) for p in self.file_paths}
+
+    def get_rotation(self, file_path: str) -> int:
+        norm_p = os.path.normpath(file_path) if file_path else ""
+        return self.file_rotations.get(norm_p, 0)
+
     def remove_by_path(self, path: str):
         if path in self.file_paths:
             cur_row = self.list_widget.currentRow()
@@ -584,5 +647,6 @@ class FileListPanel(QFrame):
 
     def clear_files(self):
         self.file_paths.clear()
+        self.file_rotations.clear()
         self._sync_items()
         self.file_list_changed.emit()

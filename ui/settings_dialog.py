@@ -3,7 +3,7 @@ from PySide6.QtCore import Qt, QSettings, QStandardPaths, Signal
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QFileDialog, QRadioButton, QButtonGroup,
-    QCheckBox, QGroupBox
+    QGroupBox
 )
 from ui.themes import THEME_LIGHT, THEME_FEMININE, get_app_icon
 
@@ -57,6 +57,24 @@ class AppSettings:
         self.settings.setValue("theme", val)
 
     @property
+    def layout_mode(self) -> str:
+        """'2up' (default) or 'standard'"""
+        return self.settings.value("layout_mode", "2up")
+
+    @layout_mode.setter
+    def layout_mode(self, val: str):
+        self.settings.setValue("layout_mode", val)
+
+    @property
+    def output_format(self) -> str:
+        """'pdf' (default) or 'docx'"""
+        return self.settings.value("output_format", "pdf")
+
+    @output_format.setter
+    def output_format(self, val: str):
+        self.settings.setValue("output_format", val)
+
+    @property
     def new_sheet_for_landscape(self) -> bool:
         return self.settings.value("new_sheet_for_landscape", True, type=bool)
 
@@ -75,8 +93,8 @@ class AppSettings:
 
 class SettingsDialog(QDialog):
     """
-    Modal settings configuration window with guaranteed solid background,
-    working window close button, and matching action buttons.
+    Modal settings configuration window with layout mode, output format,
+    theme and directory selections.
     """
     settings_saved = Signal()
 
@@ -85,11 +103,9 @@ class SettingsDialog(QDialog):
         self.setWindowTitle("Настройки")
         self.setWindowIcon(get_app_icon())
         self.setWindowModality(Qt.ApplicationModal)
-        self.setFixedSize(520, 560)
+        self.setFixedSize(520, 600)
 
-        # Standard dialog window flags so close button '✕' works reliably on Windows
         self.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
-
         self.app_settings = AppSettings()
 
         self._init_ui()
@@ -108,7 +124,7 @@ class SettingsDialog(QDialog):
     def _init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(16)
+        layout.setSpacing(14)
 
         # Title
         title_lbl = QLabel("⚙️ Настройки")
@@ -119,7 +135,7 @@ class SettingsDialog(QDialog):
         # 1. Output Directory Group
         dir_group = QGroupBox("Папка для сохранения готовых отчётов")
         dir_layout = QVBoxLayout(dir_group)
-        dir_layout.setContentsMargins(14, 20, 14, 16)
+        dir_layout.setContentsMargins(14, 18, 14, 14)
         dir_layout.setSpacing(10)
 
         dir_input_layout = QHBoxLayout()
@@ -136,7 +152,7 @@ class SettingsDialog(QDialog):
         dir_input_layout.addWidget(self.browse_btn)
 
         dir_layout.addLayout(dir_input_layout)
-        dir_layout.addSpacing(4)
+        dir_layout.addSpacing(2)
 
         # Quick location shortcuts
         quick_layout = QHBoxLayout()
@@ -156,45 +172,58 @@ class SettingsDialog(QDialog):
 
         quick_layout.addStretch()
         dir_layout.addLayout(quick_layout)
-
         layout.addWidget(dir_group)
 
-        # 2. Theme Selection Group
+        # 2. Output Format Group (PDF vs DOCX)
+        fmt_group = QGroupBox("Формат выходного файла")
+        fmt_layout = QHBoxLayout(fmt_group)
+        fmt_layout.setContentsMargins(14, 16, 14, 14)
+        fmt_layout.setSpacing(20)
+
+        self.fmt_btn_group = QButtonGroup(self)
+        self.pdf_radio = QRadioButton("📄 Формат PDF (.pdf)")
+        self.docx_radio = QRadioButton("📝 Формат Word (.docx)")
+        self.fmt_btn_group.addButton(self.pdf_radio, 1)
+        self.fmt_btn_group.addButton(self.docx_radio, 2)
+        fmt_layout.addWidget(self.pdf_radio)
+        fmt_layout.addWidget(self.docx_radio)
+        fmt_layout.addStretch()
+        self.pdf_radio.toggled.connect(self._on_format_changed)
+        layout.addWidget(fmt_group)
+
+        # 3. Layout Mode Group (Обычный vs Особенный 2-на-лист)
+        self.mode_group = QGroupBox("Режим компоновки страниц")
+        mode_layout = QVBoxLayout(self.mode_group)
+        mode_layout.setContentsMargins(14, 16, 14, 14)
+        mode_layout.setSpacing(10)
+
+        self.mode_btn_group = QButtonGroup(self)
+        self.standard_radio = QRadioButton("Обычный файл (объединить страницы как есть)")
+        self.twoup_radio = QRadioButton("Особенный файл (по две страницы на листе A4)")
+        self.mode_btn_group.addButton(self.standard_radio, 1)
+        self.mode_btn_group.addButton(self.twoup_radio, 2)
+        mode_layout.addWidget(self.standard_radio)
+        mode_layout.addWidget(self.twoup_radio)
+        layout.addWidget(self.mode_group)
+
+        # 4. Theme Selection Group
         theme_group = QGroupBox("Тема оформления")
         theme_layout = QVBoxLayout(theme_group)
-        theme_layout.setContentsMargins(14, 18, 14, 14)
-        theme_layout.setSpacing(12)
+        theme_layout.setContentsMargins(14, 16, 14, 14)
+        theme_layout.setSpacing(10)
 
         self.theme_btn_group = QButtonGroup(self)
-
-        # Titles WITHOUT extra helper text in parentheses
         self.light_radio = QRadioButton("☀️ Обычная светлая")
-        self.theme_btn_group.addButton(self.light_radio, 1)
-        theme_layout.addWidget(self.light_radio)
-
         self.fem_radio = QRadioButton("🌸 Феминная")
+        self.theme_btn_group.addButton(self.light_radio, 1)
         self.theme_btn_group.addButton(self.fem_radio, 2)
+        theme_layout.addWidget(self.light_radio)
         theme_layout.addWidget(self.fem_radio)
-
         layout.addWidget(theme_group)
-
-        # 3. Automation Options
-        opts_group = QGroupBox("Параметры сборки")
-        opts_layout = QVBoxLayout(opts_group)
-        opts_layout.setContentsMargins(14, 18, 14, 14)
-        opts_layout.setSpacing(10)
-
-        self.landscape_break_cb = QCheckBox("Начинать альбомные документы (реестры) с нового листа")
-        opts_layout.addWidget(self.landscape_break_cb)
-
-        self.auto_open_cb = QCheckBox("Автоматически открывать готовый PDF сразу после завершения")
-        opts_layout.addWidget(self.auto_open_cb)
-
-        layout.addWidget(opts_group)
 
         layout.addStretch()
 
-        # Action Buttons: Cancel and Save with identical heights and vertical alignment
+        # Action Buttons
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
         btn_layout.addStretch()
@@ -212,14 +241,31 @@ class SettingsDialog(QDialog):
 
         layout.addLayout(btn_layout)
 
+    def _on_format_changed(self):
+        is_pdf = self.pdf_radio.isChecked()
+        self.mode_group.setEnabled(is_pdf)
+        if not is_pdf:
+            self.standard_radio.setChecked(True)
+
     def _load_values(self):
         self.dir_edit.setText(self.app_settings.output_dir)
+
+        if self.app_settings.output_format == "docx":
+            self.docx_radio.setChecked(True)
+        else:
+            self.pdf_radio.setChecked(True)
+
+        if self.app_settings.layout_mode == "standard":
+            self.standard_radio.setChecked(True)
+        else:
+            self.twoup_radio.setChecked(True)
+
         if self.app_settings.theme == THEME_FEMININE:
             self.fem_radio.setChecked(True)
         else:
             self.light_radio.setChecked(True)
-        self.landscape_break_cb.setChecked(self.app_settings.new_sheet_for_landscape)
-        self.auto_open_cb.setChecked(self.app_settings.auto_open_file)
+
+        self._on_format_changed()
 
     def _browse_dir(self):
         curr = self.dir_edit.text().strip()
@@ -238,7 +284,7 @@ class SettingsDialog(QDialog):
     def _save_values(self):
         self.app_settings.output_dir = self.dir_edit.text().strip()
         self.app_settings.theme = THEME_FEMININE if self.fem_radio.isChecked() else THEME_LIGHT
-        self.app_settings.new_sheet_for_landscape = self.landscape_break_cb.isChecked()
-        self.app_settings.auto_open_file = self.auto_open_cb.isChecked()
+        self.app_settings.output_format = "docx" if self.docx_radio.isChecked() else "pdf"
+        self.app_settings.layout_mode = "standard" if self.standard_radio.isChecked() else "2up"
         self.settings_saved.emit()
         self.accept()

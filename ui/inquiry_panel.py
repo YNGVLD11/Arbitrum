@@ -460,13 +460,7 @@ class InquiryGeneratorPanel(QWidget):
         self.parse_progress_bar.setValue(val)
         self.parse_status_lbl.setText(msg)
 
-    def _on_parse_finished(self, data: dict):
-        if data.get("manager_fio"):
-            self.edit_mgr_fio.setText(data["manager_fio"])
-        if data.get("manager_inn"):
-            self.edit_mgr_inn.setText(data["manager_inn"])
-        if data.get("manager_snils"):
-            self.edit_mgr_snils.setText(data["manager_snils"])
+    def _on_parse_finished(self, data: dict):
         if data.get("manager_fio"):
             self.edit_mgr_fio.setText(data["manager_fio"])
         if data.get("manager_inn"):
@@ -548,18 +542,30 @@ class InquiryGeneratorPanel(QWidget):
         self.edit_spouse_addr.clear()
         self.edit_spouse_snils.clear()
         self.edit_spouse_inn.clear()
-        self.edit_marriage_date.clear()
-        if not self.edit_mgr_fio.text():
-            self.edit_mgr_fio.setText("Гусарова Ксения Андреевна")
-        if not self.edit_mgr_inn.text():
-            self.edit_mgr_inn.setText("380470431942")
-        if not self.edit_mgr_snils.text():
-            self.edit_mgr_snils.setText("136-556-599 95")
-        if not self.edit_mgr_addr.text():
-            self.edit_mgr_addr.setText("630007, г. Новосибирск, а/я 1")
-        if not self.edit_mgr_phone.text():
-            self.edit_mgr_phone.setText("+7 (913) 989-01-63")
-        if not self.edit_mgr_email.text():
+        self.edit_marriage_date.clear()
+
+        if not self.edit_mgr_fio.text():
+
+            self.edit_mgr_fio.setText("Гусарова Ксения Андреевна")
+
+        if not self.edit_mgr_inn.text():
+
+            self.edit_mgr_inn.setText("380470431942")
+
+        if not self.edit_mgr_snils.text():
+
+            self.edit_mgr_snils.setText("136-556-599 95")
+
+        if not self.edit_mgr_addr.text():
+
+            self.edit_mgr_addr.setText("630007, г. Новосибирск, а/я 1")
+
+        if not self.edit_mgr_phone.text():
+
+            self.edit_mgr_phone.setText("+7 (913) 989-01-63")
+
+        if not self.edit_mgr_email.text():
+
             self.edit_mgr_email.setText("kseniya_gusarova@mail.ru")
         if not self.edit_mgr_fio.text():
             self.edit_mgr_fio.setText("Гусарова Ксения Андреевна")

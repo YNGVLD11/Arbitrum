@@ -44,16 +44,24 @@ def to_short_fio(fio_str: str) -> str:
 
 
 def to_manager_short_fio(fio_str: str) -> str:
-    """e.g. 'Гусарова Ксения Андреевна' -> 'К. А. Гусарова'"""
-    parts = fio_str.strip().split()
+    """e.g. 'Гусарова Ксения Андреевна' or 'Гусарова К.А.' -> 'К. А. Гусарова'"""
+    s = fio_str.strip()
+    if not s:
+        return ""
+    m = re.match(r'^([А-ЯЁа-яё]+)\s+([А-ЯЁа-яё])\.?\s*([А-ЯЁа-яё])\.?$', s)
+    if m:
+        return f"{m.group(2).upper()}. {m.group(3).upper()}. {m.group(1).capitalize()}"
+    m = re.match(r'^([А-ЯЁа-яё])\.?\s*([А-ЯЁа-яё])\.?\s+([А-ЯЁа-яё]+)$', s)
+    if m:
+        return f"{m.group(1).upper()}. {m.group(2).upper()}. {m.group(3).capitalize()}"
+    parts = s.split()
     if len(parts) >= 3:
-        # Check if already initials
         if len(parts[0]) == 1 or parts[0].endswith("."):
-            return fio_str
-        return f"{parts[1][0]}. {parts[2][0]}. {parts[0]}"
+            return s
+        return f"{parts[1][0].upper()}. {parts[2][0].upper()}. {parts[0].capitalize()}"
     elif len(parts) == 2:
-        return f"{parts[1][0]}. {parts[0]}"
-    return fio_str
+        return f"{parts[1][0].upper()}. {parts[0].capitalize()}"
+    return s
 
 
 def calc_3_years_ago(date_str: str) -> str:
@@ -336,11 +344,31 @@ def generate_single_inquiry(
     for p in doc.paragraphs:
         replace_tokens_in_paragraph(p, bold_map)
 
+    # 5.5 Replace Manager Contact details if customized
+    default_addr = "630007, г. Новосибирск, а/я 1"
+    default_phone = "+7 (913) 989-01-63"
+    default_email = "kseniya_gusarova@mail.ru"
+
+    for p in doc.paragraphs:
+        if manager_corr_address and manager_corr_address != default_addr and default_addr in p.text:
+            p.text = p.text.replace(default_addr, manager_corr_address)
+        if manager_phone and manager_phone != default_phone and default_phone in p.text:
+            p.text = p.text.replace(default_phone, manager_phone)
+        if manager_email and manager_email != default_email and default_email in p.text:
+            p.text = p.text.replace(default_email, manager_email)
+
     # 6. Process all Tables and Cells
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 replace_tokens_in_cell(cell, bold_map)
+                for cp in cell.paragraphs:
+                    if manager_corr_address and manager_corr_address != default_addr and default_addr in cp.text:
+                        cp.text = cp.text.replace(default_addr, manager_corr_address)
+                    if manager_phone and manager_phone != default_phone and default_phone in cp.text:
+                        cp.text = cp.text.replace(default_phone, manager_phone)
+                    if manager_email and manager_email != default_email and default_email in cp.text:
+                        cp.text = cp.text.replace(default_email, manager_email)
 
     # 7. Final safety clean: remove any accidental remaining {{...}} tags
     for p in doc.paragraphs:

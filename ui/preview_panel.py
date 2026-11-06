@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QFrame, QGraphicsDropShadowEffect
 )
-from PySide6.QtGui import QPixmap, QColor
+from PySide6.QtGui import QPixmap, QColor, QTransform
 from core.preview import DocumentRenderer, PreviewWorker, is_cached_pdf_ready
 from ui.themes import THEME_FEMININE
 
@@ -26,6 +26,7 @@ class DocumentPreviewPanel(QFrame):
         self.current_page = 0
         self.total_pages = 0
         self.zoom_factor = 1.0
+        self.rotation = 0
 
         # Persistent background worker for preview conversions
         self.preview_worker = PreviewWorker(self)
@@ -179,13 +180,16 @@ class DocumentPreviewPanel(QFrame):
         if self.total_pages > 0:
             self._render_current_page()
 
-    def set_document(self, file_path: str):
+    def set_document(self, file_path: str, rotation: int = 0):
         if not file_path or not os.path.exists(file_path):
             self.clear_preview()
             return
 
+        self.rotation = rotation % 360
+
         if self.current_file_path == file_path and self.total_pages > 0:
-            return  # Already loaded
+            self._render_current_page()
+            return
 
         self.current_file_path = file_path
         self.current_page = 0
@@ -248,15 +252,28 @@ class DocumentPreviewPanel(QFrame):
         if self.current_file_path == file_path:
             self._show_error(f"Предпросмотр недоступен: {err}")
 
+    def set_rotation(self, rotation: int):
+        self.rotation = rotation % 360
+        if self.total_pages > 0:
+            self._render_current_page()
+
     def _render_current_page(self):
         if self.total_pages <= 0:
             return
 
         page_sz = self.renderer.get_page_size(self.current_page)
-        pw = max(1, page_sz.width())
-        ph = max(1, page_sz.height())
+        orig_pw = max(1, page_sz.width())
+        orig_ph = max(1, page_sz.height())
+
+        rot = getattr(self, "rotation", 0) % 360
+        if rot in (90, 270):
+            pw, ph = orig_ph, orig_pw
+        else:
+            pw, ph = orig_pw, orig_ph
+
         is_land = pw > ph
         orient_str = "Альбомная" if is_land else "Книжная"
+        rot_suffix = f" (поворот {rot}°)" if rot != 0 else ""
 
         # Fit inside viewport with margins
         vp_w = max(180, self.scroll_area.viewport().width() - 36, self.scroll_area.width() - 40)
@@ -270,8 +287,17 @@ class DocumentPreviewPanel(QFrame):
         target_w = max(80, int(pw * target_scale))
         target_h = max(80, int(ph * target_scale))
 
-        pixmap = self.renderer.render_page(self.current_page, QSize(target_w, target_h))
+        if rot in (90, 270):
+            render_size = QSize(target_h, target_w)
+        else:
+            render_size = QSize(target_w, target_h)
+
+        pixmap = self.renderer.render_page(self.current_page, render_size)
         if not pixmap.isNull():
+            if rot != 0:
+                transform = QTransform().rotate(rot)
+                pixmap = pixmap.transformed(transform, Qt.SmoothTransformation)
+
             self.image_lbl.setWordWrap(False)
             self.image_lbl.setText("")
             self.image_lbl.setPixmap(pixmap)
@@ -289,8 +315,7 @@ class DocumentPreviewPanel(QFrame):
             self._show_error("Ошибка рендеринга страницы")
 
         self.page_lbl.setText(f"{self.current_page + 1} / {self.total_pages}")
-        # Clean metadata without pt values:
-        self.meta_lbl.setText(f"{orient_str} • {int(self.zoom_factor * 100)}%")
+        self.meta_lbl.setText(f"{orient_str}{rot_suffix} • {int(self.zoom_factor * 100)}%")
         self._update_nav_buttons()
 
     def _update_nav_buttons(self):

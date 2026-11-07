@@ -29,6 +29,7 @@ def build():
         "--hidden-import=pymorphy3",
         "--hidden-import=pymorphy3_dicts_ru",
         "--collect-all=pymorphy3_dicts_ru",
+        "--collect-all=docx",
         main_py
     ]
 

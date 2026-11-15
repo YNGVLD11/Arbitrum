@@ -1,5 +1,6 @@
 import os
 import sys
+import shutil
 import subprocess
 
 def build():
@@ -37,7 +38,13 @@ def build():
     ret = subprocess.run(cmd)
     if ret.returncode == 0:
         exe_path = os.path.join(dist_dir, "Арбитрум.exe")
-        print(f"\n[УСПЕХ] Автономный EXE собран с иконкой: {exe_path}")
+        alt_exe = os.path.join(dist_dir, "Arbitrum.exe")
+        print(f"\n[УСПЕХ] Автономный EXE собран: {exe_path}")
+        try:
+            shutil.copy2(exe_path, alt_exe)
+            print(f"[УСПЕХ] Создана копия с латинским именем: {alt_exe}")
+        except PermissionError:
+            print(f"[ВНИМАНИЕ] Файл {alt_exe} занят работающим приложением. Скопируйте после закрытия приложения.")
     else:
         print("\n[ОШИБКА] Сборка завершилась с ошибкой.")
 

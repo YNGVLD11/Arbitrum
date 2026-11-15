@@ -35,6 +35,53 @@ class HintLineEdit(QLineEdit):
         QToolTip.hideText()
 
 
+class CreditorRowWidget(QWidget):
+    """
+    A single row in the dynamic creditors list:
+    Name, Address, INN, and a Delete ('✕') button.
+    """
+    deleted = Signal(object)
+
+    def __init__(self, name: str = "", address: str = "", inn: str = "", parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 2, 0, 2)
+        layout.setSpacing(6)
+
+        name_str = "" if isinstance(name, bool) else str(name or "")
+        addr_str = "" if isinstance(address, bool) else str(address or "")
+        inn_str = "" if isinstance(inn, bool) else str(inn or "")
+
+        self.edit_name = HintLineEdit("Наименование кредитора", "Наименование банка, МФО или организации", self)
+        self.edit_name.setText(name_str)
+
+        self.edit_addr = HintLineEdit("Адрес кредитора", "Юридический / почтовый адрес кредитора", self)
+        self.edit_addr.setText(addr_str)
+
+        self.edit_inn = HintLineEdit("ИНН", "ИНН кредитора", self)
+        self.edit_inn.setText(inn_str)
+        self.edit_inn.setFixedWidth(110)
+
+        self.btn_del = QPushButton("✕", self)
+        self.btn_del.setToolTip("Удалить кредитора")
+        self.btn_del.setFixedSize(26, 26)
+        self.btn_del.setObjectName("dangerButton")
+        self.btn_del.setCursor(Qt.PointingHandCursor)
+        self.btn_del.clicked.connect(lambda: self.deleted.emit(self))
+
+        layout.addWidget(self.edit_name, stretch=3)
+        layout.addWidget(self.edit_addr, stretch=4)
+        layout.addWidget(self.edit_inn)
+        layout.addWidget(self.btn_del)
+
+    def get_data(self) -> dict:
+        return {
+            "name": self.edit_name.text().strip(),
+            "address": self.edit_addr.text().strip(),
+            "inn": self.edit_inn.text().strip()
+        }
+
+
 class DropArea(QFrame):
     file_dropped = Signal(str)
     clicked = Signal()
@@ -92,12 +139,14 @@ class DropArea(QFrame):
 
 class InquiryGeneratorPanel(QWidget):
     generation_requested = Signal()
+    debtor_parsed = Signal(dict)
 
     def __init__(self, settings, parent=None):
         super().__init__(parent)
         self.settings = settings
         self.theme = settings.theme
         self.parser_worker = None
+        self.creditor_rows: list[CreditorRowWidget] = []
         self._init_ui()
 
     def _init_ui(self):
@@ -164,6 +213,10 @@ class InquiryGeneratorPanel(QWidget):
         self.edit_court_name = self._make_input("Наименование арбитражного суда", "Наименование арбитражного суда")
         form_layout.addWidget(self.edit_court_name)
 
+        # Added field: Дата принятия заявления
+        self.edit_petition_date = self._make_input("Дата принятия заявления", "Дата принятия заявления к производству судом (для расчета 3-летнего периода запроса сведений)")
+        form_layout.addWidget(self.edit_petition_date)
+
         # Section 2: Должник
         form_layout.addSpacing(4)
         form_layout.addWidget(self._make_section_header("Данные должника"))
@@ -206,6 +259,55 @@ class InquiryGeneratorPanel(QWidget):
 
         self.edit_pass_issued_by = self._make_input("Кем выдан паспорт", "Кем выдан паспорт должника")
         form_layout.addWidget(self.edit_pass_issued_by)
+
+        # Section: Работодатель должника
+        form_layout.addSpacing(4)
+        emp_hdr_layout = QHBoxLayout()
+        emp_hdr_layout.addWidget(self._make_section_header("Место работы должника"))
+        self.cb_employed = QCheckBox("Должник трудоустроен", self)
+        self.cb_employed.setChecked(False)
+        self.cb_employed.toggled.connect(self._on_employed_toggled)
+        emp_hdr_layout.addSpacing(10)
+        emp_hdr_layout.addWidget(self.cb_employed)
+        emp_hdr_layout.addStretch()
+        form_layout.addLayout(emp_hdr_layout)
+
+        self.employer_container = QWidget()
+        emp_cont_layout = QVBoxLayout(self.employer_container)
+        emp_cont_layout.setContentsMargins(0, 2, 0, 0)
+        emp_cont_layout.setSpacing(6)
+
+        row_emp = QHBoxLayout()
+        self.edit_emp_name = self._make_input("Наименование работодателя", "Наименование организации-работодателя (ООО, ПАО, ИП)")
+        self.edit_emp_inn = self._make_input("ИНН работодателя", "ИНН работодателя")
+        self.edit_emp_inn.setFixedWidth(130)
+        row_emp.addWidget(self.edit_emp_name, stretch=3)
+        row_emp.addWidget(self.edit_emp_inn, stretch=1)
+        emp_cont_layout.addLayout(row_emp)
+
+        self.edit_emp_addr = self._make_input("Адрес работодателя", "Адрес местонахождения работодателя")
+        emp_cont_layout.addWidget(self.edit_emp_addr)
+
+        form_layout.addWidget(self.employer_container)
+        self.employer_container.setEnabled(False)
+
+        # Section: Кредиторы (Банки и МФО)
+        form_layout.addSpacing(4)
+        cred_hdr_layout = QHBoxLayout()
+        cred_hdr_layout.addWidget(self._make_section_header("Кредиторы (банки, МФО, инспекции)"))
+        cred_hdr_layout.addStretch()
+
+        self.btn_add_creditor = QPushButton("+ Добавить кредитора", self)
+        self.btn_add_creditor.setObjectName("addCreditorBtn")
+        self.btn_add_creditor.setCursor(Qt.PointingHandCursor)
+        self.btn_add_creditor.clicked.connect(lambda: self._add_creditor_row())
+        cred_hdr_layout.addWidget(self.btn_add_creditor)
+        form_layout.addLayout(cred_hdr_layout)
+
+        self.creditors_layout = QVBoxLayout()
+        self.creditors_layout.setContentsMargins(0, 0, 0, 0)
+        self.creditors_layout.setSpacing(4)
+        form_layout.addLayout(self.creditors_layout)
 
         # Section 3: Семейное положение и супруг
         form_layout.addSpacing(4)
@@ -317,7 +419,7 @@ class InquiryGeneratorPanel(QWidget):
         cards_layout.addWidget(self.left_card, stretch=6)
 
         # =====================================================================
-        # RIGHT CARD: Список ведомств с чекбоксами
+        # RIGHT CARD: Список ведомств с чекбоксами (20 шаблонов)
         # =====================================================================
         self.right_card = QFrame()
         self.right_card.setObjectName("cardFrame")
@@ -326,7 +428,7 @@ class InquiryGeneratorPanel(QWidget):
         right_layout.setSpacing(10)
 
         right_header = QHBoxLayout()
-        card2_title = QLabel("Список ведомств")
+        card2_title = QLabel("Список ведомств и шаблонов")
         card2_title.setObjectName("cardTitle")
         self.agencies_count_lbl = QLabel("")
         self.agencies_count_lbl.setObjectName("countLabel")
@@ -335,7 +437,7 @@ class InquiryGeneratorPanel(QWidget):
         right_header.addWidget(self.agencies_count_lbl)
         right_layout.addLayout(right_header)
 
-        # Scroll area for 18 checkboxes
+        # Scroll area for 20 checkboxes
         right_scroll = QScrollArea()
         right_scroll.setWidgetResizable(True)
         right_scroll.setFrameShape(QFrame.NoFrame)
@@ -351,7 +453,11 @@ class InquiryGeneratorPanel(QWidget):
         self.checkboxes = {}
         for i, item in enumerate(TEMPLATES_CONFIG):
             cb = QCheckBox(item["name"])
-            cb.setChecked(True)
+            # Employer template is unchecked by default until debtor is marked employed
+            if item["id"] == "employer":
+                cb.setChecked(False)
+            else:
+                cb.setChecked(True)
             cb.stateChanged.connect(self._update_agencies_count)
             self.checkboxes[item["id"]] = cb
             row = i if i < mid else i - mid
@@ -421,6 +527,26 @@ class InquiryGeneratorPanel(QWidget):
         has_spouse = (btn_id in (1, 2))
         self.spouse_container.setEnabled(has_spouse)
 
+    def _on_employed_toggled(self, checked: bool):
+        self.employer_container.setEnabled(checked)
+        if "employer" in self.checkboxes:
+            self.checkboxes["employer"].setChecked(checked)
+
+    def _add_creditor_row(self, name: str = "", address: str = "", inn: str = ""):
+        if isinstance(name, bool):
+            name = ""
+        row = CreditorRowWidget(name=name, address=address, inn=inn, parent=self)
+        row.deleted.connect(self._remove_creditor_row)
+        self.creditor_rows.append(row)
+        self.creditors_layout.addWidget(row)
+        row.show()
+
+    def _remove_creditor_row(self, row_widget: CreditorRowWidget):
+        if row_widget in self.creditor_rows:
+            self.creditor_rows.remove(row_widget)
+            self.creditors_layout.removeWidget(row_widget)
+            row_widget.deleteLater()
+
     def _select_all_agencies(self):
         for cb in self.checkboxes.values():
             cb.setChecked(True)
@@ -447,36 +573,25 @@ class InquiryGeneratorPanel(QWidget):
         if fpath:
             self._load_file(fpath)
 
-    def _load_file(self, file_path: str):
-        self.drop_area.label.setText(f"Загружен: {os.path.basename(file_path)}")
+    def _load_file(self, fpath: str):
+        self.drop_area.label.setText(f"Загружен файл:\n{os.path.basename(fpath)}")
         self.parse_progress_bar.show()
-        self.parse_progress_bar.setValue(10)
+        self.parse_progress_bar.setRange(0, 0)
         self.parse_status_lbl.show()
-        self.parse_status_lbl.setText("Анализ документа...")
+        self.parse_status_lbl.setText("Анализ судебного акта...")
 
-        self.parser_worker = CourtParserWorker(file_path)
-        self.parser_worker.progress.connect(self._on_parse_progress)
-        self.parser_worker.finished_signal.connect(self._on_parse_finished)
-        self.parser_worker.failed_signal.connect(self._on_parse_failed)
+        self.parser_worker = CourtParserWorker(fpath)
+        self.parser_worker.parsed.connect(self._on_parse_success)
+        self.parser_worker.failed.connect(self._on_parse_failed)
         self.parser_worker.start()
 
-    def _on_parse_progress(self, val: int, msg: str):
-        self.parse_progress_bar.setValue(val)
-        self.parse_status_lbl.setText(msg)
-
-    def _on_parse_finished(self, data: dict):
-        if data.get("manager_fio"):
-            self.edit_mgr_fio.setText(data["manager_fio"])
-        if data.get("manager_inn"):
-            self.edit_mgr_inn.setText(data["manager_inn"])
-        if data.get("manager_snils"):
-            self.edit_mgr_snils.setText(data["manager_snils"])
+    def _on_parse_success(self, data: dict):
         self.parse_progress_bar.hide()
         self.parse_status_lbl.hide()
 
-        # Populate Fields
         self.edit_case_no.setText(data.get("case_number", ""))
         self.edit_dec_date.setText(data.get("decision_date", ""))
+        self.edit_petition_date.setText(data.get("petition_date", ""))
         self.edit_court_name.setText(data.get("court_name", ""))
 
         self.edit_debtor_fio.setText(data.get("debtor_fio", ""))
@@ -514,6 +629,21 @@ class InquiryGeneratorPanel(QWidget):
         self.edit_spouse_inn.setText(data.get("spouse_inn", ""))
         self.edit_marriage_date.setText(data.get("marriage_date", ""))
 
+        # Signal for SQLite database debtor card creation
+        pass_series = data.get("debtor_passport_series", "").strip()
+        pass_num = data.get("debtor_passport_number", "").strip()
+        passport_data = f"{pass_series} {pass_num}".strip()
+        debtor_info = {
+            "full_name": data.get("debtor_fio", "").strip(),
+            "case_number": data.get("case_number", "").strip(),
+            "snils": data.get("debtor_snils", "").strip(),
+            "inn": data.get("debtor_inn", "").strip(),
+            "passport_data": passport_data,
+            "address": data.get("debtor_address", "").strip()
+        }
+        if debtor_info["full_name"]:
+            self.debtor_parsed.emit(debtor_info)
+
     def _on_parse_failed(self, err: str):
         self.parse_progress_bar.hide()
         self.parse_status_lbl.hide()
@@ -523,6 +653,7 @@ class InquiryGeneratorPanel(QWidget):
         self.drop_area.label.setText("Перетащите решение или определение суда в формате PDF или Word\nили нажмите для выбора файла")
         self.edit_case_no.clear()
         self.edit_dec_date.clear()
+        self.edit_petition_date.clear()
         self.edit_court_name.clear()
         self.edit_debtor_fio.clear()
         self.edit_debtor_fio_gen.clear()
@@ -537,6 +668,16 @@ class InquiryGeneratorPanel(QWidget):
         self.edit_pass_date.clear()
         self.edit_pass_code.clear()
 
+        # Clear employer
+        self.cb_employed.setChecked(False)
+        self.edit_emp_name.clear()
+        self.edit_emp_addr.clear()
+        self.edit_emp_inn.clear()
+
+        # Clear creditors
+        for row in list(self.creditor_rows):
+            self._remove_creditor_row(row)
+
         self.rb_not_married.setChecked(True)
         self._on_spouse_status_changed(0)
         self.edit_spouse_fio.clear()
@@ -548,29 +689,6 @@ class InquiryGeneratorPanel(QWidget):
         self.edit_spouse_inn.clear()
         self.edit_marriage_date.clear()
 
-        if not self.edit_mgr_fio.text():
-
-            self.edit_mgr_fio.setText("Гусарова Ксения Андреевна")
-
-        if not self.edit_mgr_inn.text():
-
-            self.edit_mgr_inn.setText("380470431942")
-
-        if not self.edit_mgr_snils.text():
-
-            self.edit_mgr_snils.setText("136-556-599 95")
-
-        if not self.edit_mgr_addr.text():
-
-            self.edit_mgr_addr.setText("630007, г. Новосибирск, а/я 1")
-
-        if not self.edit_mgr_phone.text():
-
-            self.edit_mgr_phone.setText("+7 (913) 989-01-63")
-
-        if not self.edit_mgr_email.text():
-
-            self.edit_mgr_email.setText("kseniya_gusarova@mail.ru")
         if not self.edit_mgr_fio.text():
             self.edit_mgr_fio.setText("Гусарова Ксения Андреевна")
         if not self.edit_mgr_inn.text():
@@ -591,10 +709,13 @@ class InquiryGeneratorPanel(QWidget):
         elif self.rb_divorced.isChecked():
             spouse_st = "divorced"
 
+        creditors_data = [row.get_data() for row in self.creditor_rows if row.get_data()["name"] or row.get_data()["address"]]
+
         return {
             "court_name": self.edit_court_name.text().strip(),
             "case_number": self.edit_case_no.text().strip(),
             "decision_date": self.edit_dec_date.text().strip(),
+            "petition_date": self.edit_petition_date.text().strip(),
             "debtor_fio": self.edit_debtor_fio.text().strip(),
             "debtor_fio_gen": self.edit_debtor_fio_gen.text().strip() or self.edit_debtor_fio.text().strip(),
             "debtor_birth_date": self.edit_debtor_birth.text().strip(),
@@ -607,6 +728,11 @@ class InquiryGeneratorPanel(QWidget):
             "debtor_passport_issued_by": self.edit_pass_issued_by.text().strip(),
             "debtor_passport_date": self.edit_pass_date.text().strip(),
             "debtor_passport_code": self.edit_pass_code.text().strip(),
+            "employer_employed": self.cb_employed.isChecked(),
+            "employer_name": self.edit_emp_name.text().strip() if self.cb_employed.isChecked() else "",
+            "employer_address": self.edit_emp_addr.text().strip() if self.cb_employed.isChecked() else "",
+            "employer_inn": self.edit_emp_inn.text().strip() if self.cb_employed.isChecked() else "",
+            "creditors": creditors_data,
             "spouse_status": spouse_st,
             "spouse_fio": self.edit_spouse_fio.text().strip(),
             "spouse_fio_instr": self.edit_spouse_fio_instr.text().strip(),
@@ -635,7 +761,6 @@ class InquiryGeneratorPanel(QWidget):
             QMessageBox.warning(self, "Внимание", "Выберите хотя бы одно ведомство из списка.")
             return
 
-        # Choose destination folder
         base_dir = self.settings.output_dir
         out_dir = QFileDialog.getExistingDirectory(
             self,
@@ -645,36 +770,39 @@ class InquiryGeneratorPanel(QWidget):
         if not out_dir:
             return
 
-        # Templates directory
-        base_app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        tmpl_dir = os.path.join(base_app_dir, "assets", "templates")
+        templates_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "templates")
+        if not os.path.exists(templates_dir):
+            templates_dir = os.path.join(os.path.abspath("."), "assets", "templates")
 
-        prog_dlg = BuildProgressDialog(self)
-        prog_dlg.setWindowTitle("Формирование запросов")
+        progress = BuildProgressDialog(parent=self)
+        progress.setWindowTitle("Формирование запросов...")
+        progress.show()
 
-        def _do_generate():
-            try:
-                res = generate_inquiries(
-                    data=data,
-                    selected_template_ids=selected_ids,
-                    output_base_dir=out_dir,
-                    templates_dir=tmpl_dir,
-                    progress_callback=prog_dlg.set_progress
-                )
-                prog_dlg.accept()
-                success_dlg = InquirySuccessDialog(
-                    output_dir=res["output_dir"],
-                    inquiries_count=res["files_count"],
-                    parent=self
-                )
-                success_dlg.exec()
-            except Exception as e:
-                prog_dlg.reject()
-                QMessageBox.critical(self, "Ошибка формирования", f"Произошла ошибка:\n{e}")
+        res = None
+        try:
+            res = generate_inquiries(
+                data=data,
+                selected_template_ids=selected_ids,
+                output_base_dir=out_dir,
+                templates_dir=templates_dir,
+                progress_callback=progress.set_progress
+            )
+        except Exception as e:
+            progress.close()
+            QMessageBox.critical(self, "Ошибка формирования", f"Произошла ошибка при создании документов:\n{str(e)}")
+            return
 
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(100, _do_generate)
-        prog_dlg.exec()
+        progress.close()
 
-    def set_theme(self, theme: str):
-        self.theme = theme
+        if res and res.get("files_count", 0) > 0:
+            target_folder = res["output_dir"]
+            files_count = res["files_count"]
+            diag = InquirySuccessDialog(
+                output_dir=target_folder,
+                files_count=files_count,
+                parent=self
+            )
+            diag.exec()
+
+    def set_theme(self, theme_name: str):
+        self.theme = theme_name

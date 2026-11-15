@@ -64,6 +64,11 @@ class BuildProgressDialog(QDialog):
     def set_progress(self, percent: int, message: str):
         self.progress_bar.setValue(percent)
         self.status_lbl.setText(message)
+        from PySide6.QtWidgets import QApplication
+        QApplication.processEvents()
+
+    def update_progress(self, percent: int, message: str):
+        self.set_progress(percent, message)
 
     def _on_cancel(self):
         self.cancel_btn.setEnabled(False)

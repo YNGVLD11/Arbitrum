@@ -12,10 +12,10 @@ class InquirySuccessDialog(QDialog):
     Modal success dialog shown after inquiry documents are generated.
     Displays target directory and count of inquiries with 'Открыть папку' and 'Закрыть'.
     """
-    def __init__(self, output_dir: str, inquiries_count: int, parent=None):
+    def __init__(self, output_dir: str, inquiries_count: int = 0, files_count: int = 0, parent=None):
         super().__init__(parent)
         self.output_dir = output_dir
-        self.inquiries_count = inquiries_count
+        self.inquiries_count = inquiries_count or files_count
 
         self.setWindowTitle("Запросы сформированы - Арбитум")
         self.setWindowIcon(get_app_icon())

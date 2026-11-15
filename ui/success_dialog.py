@@ -5,14 +5,15 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame
 )
+from core.validator import RussianPostValidator
 from ui.file_list import format_file_size
 from ui.themes import get_app_icon
 
 
 class BuildSuccessDialog(QDialog):
     """
-    Dialog presented on successful build with direct actions
-    to open the file or show it in Windows File Explorer.
+    Диалог успешного завершения сборки отчета с автоматической валидацией
+    на соответствие требованиям сервиса zakaznoe.pochta.ru.
     """
     def __init__(self, result_meta: dict, parent=None):
         super().__init__(parent)
@@ -21,7 +22,7 @@ class BuildSuccessDialog(QDialog):
 
         self.setWindowTitle("Сборка отчёта завершена")
         self.setWindowIcon(get_app_icon())
-        self.setFixedSize(480, 260)
+        self.setFixedSize(500, 360)
         self.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
 
         self._init_ui()
@@ -32,30 +33,25 @@ class BuildSuccessDialog(QDialog):
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(12)
 
-        # Header with celebration icon
-        header_layout = QHBoxLayout()
-        header_layout.setSpacing(12)
-
-        icon_lbl = QLabel("🎉")
-        icon_lbl.setStyleSheet("font-size: 30px;")
-        header_layout.addWidget(icon_lbl)
-
+        # Заголовок
         title_layout = QVBoxLayout()
+        title_layout.setSpacing(2)
+
         is_docx = self.output_path.lower().endswith(".docx")
         layout_mode = self.result_meta.get("layout_mode", "2up")
 
         if is_docx:
-            t_txt = "Word-документ успешно собран!"
+            t_txt = "Word-документ успешно собран"
             s_txt = "Документы объединены в единый файл Word (.docx)"
         elif layout_mode == "standard":
-            t_txt = "PDF-документ успешно собран!"
+            t_txt = "PDF-документ успешно собран"
             s_txt = "Документы объединены по одной странице на лист"
         else:
-            t_txt = "PDF-документ успешно собран!"
-            s_txt = "Файл скомпонован в формате A4 2-на-лист"
+            t_txt = "PDF-документ успешно собран"
+            s_txt = "Файл скомпонован в формате A4 2 страницы на листе"
 
         title_lbl = QLabel(t_txt)
         title_lbl.setStyleSheet("font-size: 16px; font-weight: 700; color: #16A34A;")
@@ -64,18 +60,16 @@ class BuildSuccessDialog(QDialog):
         sub_lbl = QLabel(s_txt)
         sub_lbl.setStyleSheet("color: #64748B; font-size: 11px;")
         title_layout.addWidget(sub_lbl)
-        header_layout.addLayout(title_layout, stretch=1)
+        layout.addLayout(title_layout)
 
-        layout.addLayout(header_layout)
-
-        # File Details Card
+        # Карточка сведений о файле
         card = QFrame()
         card.setObjectName("cardFrame")
         card_layout = QVBoxLayout(card)
         card_layout.setSpacing(4)
 
         fname = os.path.basename(self.output_path)
-        name_lbl = QLabel(f"📄 <b>{fname}</b>")
+        name_lbl = QLabel(f"<b>{fname}</b>")
         card_layout.addWidget(name_lbl)
 
         sheets = self.result_meta.get("total_sheets", 0)
@@ -98,18 +92,71 @@ class BuildSuccessDialog(QDialog):
 
         layout.addWidget(card)
 
+        # Блок валидации для сервиса zakaznoe.pochta.ru
+        if not is_docx and os.path.isfile(self.output_path):
+            val_res = RussianPostValidator.validate_pdf(self.output_path)
+            val_card = QFrame()
+            val_layout = QVBoxLayout(val_card)
+            val_layout.setContentsMargins(12, 10, 12, 10)
+            val_layout.setSpacing(4)
+
+            if val_res.is_valid and not val_res.warnings:
+                val_card.setStyleSheet(
+                    "background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px;"
+                )
+                status_header = QLabel("Соответствие zakaznoe.pochta.ru: подтверждено")
+                status_header.setStyleSheet("color: #15803D; font-weight: 700; font-size: 12px;")
+                val_layout.addWidget(status_header)
+
+                desc_text = (
+                    f"Листов: {val_res.page_count} (лимит 19) • "
+                    f"Размер: {val_res.file_size_mb:.2f} МБ (лимит 20 МБ) • "
+                    f"Формат: А4 книжный (210 x 297 мм)"
+                )
+                desc_lbl = QLabel(desc_text)
+                desc_lbl.setStyleSheet("color: #166534; font-size: 11px;")
+                val_layout.addWidget(desc_lbl)
+            elif val_res.is_valid and val_res.warnings:
+                val_card.setStyleSheet(
+                    "background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px;"
+                )
+                status_header = QLabel("Соответствие zakaznoe.pochta.ru: предупреждение")
+                status_header.setStyleSheet("color: #B45309; font-weight: 700; font-size: 12px;")
+                val_layout.addWidget(status_header)
+
+                for w in val_res.warnings:
+                    w_lbl = QLabel(w)
+                    w_lbl.setStyleSheet("color: #92400E; font-size: 11px;")
+                    w_lbl.setWordWrap(True)
+                    val_layout.addWidget(w_lbl)
+            else:
+                val_card.setStyleSheet(
+                    "background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px;"
+                )
+                status_header = QLabel("Соответствие zakaznoe.pochta.ru: не пройдено")
+                status_header.setStyleSheet("color: #B91C1C; font-weight: 700; font-size: 12px;")
+                val_layout.addWidget(status_header)
+
+                for err in val_res.errors[:3]:
+                    err_lbl = QLabel(f"• {err}")
+                    err_lbl.setStyleSheet("color: #991B1B; font-size: 11px;")
+                    err_lbl.setWordWrap(True)
+                    val_layout.addWidget(err_lbl)
+
+            layout.addWidget(val_card)
+
         layout.addStretch()
 
-        # Action Buttons
+        # Кнопки действий
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(8)
 
-        self.open_file_btn = QPushButton("📄 Открыть файл")
+        self.open_file_btn = QPushButton("Открыть файл")
         self.open_file_btn.setObjectName("primaryButton")
         self.open_file_btn.clicked.connect(self._open_file)
         btn_layout.addWidget(self.open_file_btn)
 
-        self.show_folder_btn = QPushButton("📂 Показать в папке")
+        self.show_folder_btn = QPushButton("Показать в папке")
         self.show_folder_btn.clicked.connect(self._show_in_folder)
         btn_layout.addWidget(self.show_folder_btn)
 

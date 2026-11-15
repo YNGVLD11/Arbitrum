@@ -139,6 +139,7 @@ def parse_court_decision(file_path: str) -> Dict[str, Any]:
         "court_name": "",
         "case_number": "",
         "decision_date": "",
+        "petition_date": "",
         "debtor_fio": "",
         "debtor_fio_gen": "",
         "debtor_birth_date": "",
@@ -179,71 +180,100 @@ def parse_court_decision(file_path: str) -> Dict[str, Any]:
     }
 
     # 1. Court Name
-    m_court = re.search(r'(АРБИТРАЖНЫЙ\s+СУД\s+[А-Яа-яЁё\s]+?)(?=\n|\s*Дело|\s*Р\s*Е\s*Ш\s*Е\s*Н\s*И\s*Е|\s*О\s*П\s*Р\s*Е\s*Д\s*Е\s*Л\s*Е\s*Н\s*И\s*Е)', norm, re.IGNORECASE)
+    m_court = re.search(r'(АРБИТРАЖНЫЙ\s+СУД\s+[А-Яа-яЁё\s]+?)(?=\n|\s*Дело|\s*Р\s*Е\s*Ш\s*Е\s*Н\s*И\s*Е|\s*О\s*П\s*Р\s*Е\s*Д\s*Е\s*Л\s*Е\s*Н\s*И\s*Е|\s*\d{1,2}\s+[а-яА-ЯёЁ]+)', norm, re.IGNORECASE)
     if m_court:
         res["court_name"] = clean_court_name(m_court.group(1))
 
+    single_norm = ' '.join(norm.split())
+
     # 2. Case Number
-    m_case = re.search(r'Дело\s*№?\s*(А\d+[\-–—]\d+/\d+)', norm, re.IGNORECASE)
+    m_case = re.search(r'Дело\s*№?\s*(А\d+[\-–—]\d+/\d+)', single_norm, re.IGNORECASE)
     if m_case:
         res["case_number"] = m_case.group(1).replace('–', '-').replace('—', '-')
 
-    # 3. Decision Date
-    m_date = re.search(r'(\d{1,2}\s+[а-яА-ЯёЁ]+\s+\d{4}\s*года|\d{2}\.\d{2}\.\d{4})', norm)
+    # 3. Decision Date (prioritize top header zone)
+    header_chunk = single_norm[:800]
+    m_date = re.search(r'(\d{1,2}\s+[а-яА-ЯёЁ]+\s+\d{4}\s*(?:года|г\.?)|(?<!\d)\d{2}\.\d{2}\.\d{4})', header_chunk)
+    if not m_date:
+        m_date = re.search(r'(\d{1,2}\s+[а-яА-ЯёЁ]+\s+\d{4}\s*(?:года|г\.?))', single_norm)
+    if not m_date:
+        m_date = re.search(r'(\d{2}\.\d{2}\.\d{4})', single_norm)
     if m_date:
         res["decision_date"] = parse_russian_date(m_date.group(1))
 
+    # 3.1. Petition / Application Date (Дата принятия заявления к производству)
+    m_pet = re.search(r'(?:заявление\s*(?:должника|конкурсного\s*кредитора)?\s*(?:принято|поступило|зарегистрировано)|принять\s*заявление|определением\s*от)\s*(\d{2}\.\d{2}\.\d{4}|\d{1,2}\s+[а-яА-ЯёЁ]+\s+\d{4})', single_norm, re.IGNORECASE)
+    if m_pet:
+        res["petition_date"] = parse_russian_date(m_pet.group(1))
+    else:
+        m_pet2 = re.search(r'заявлени[ея][^\.\n]*?от\s*(\d{2}\.\d{2}\.\d{4})', single_norm, re.IGNORECASE)
+        if m_pet2:
+            res["petition_date"] = m_pet2.group(1)
+
     # 4. Debtor Info
-    # e.g.: дело по заявлению должника – Иванов Иван Иванович (01.01.1980 г.р., ...)
-    m_debtor = re.search(r'дело по заявлению должника\s*[\-–—]\s*([А-Яа-яЁё\s]+?)\s*\((.*?)\)', norm, re.DOTALL)
-    if not m_debtor:
-        # fallback: в отношении гражданина-должника ...
-        m_debtor = re.search(r'в отношении\s+(?:гражданина[\-–—\s]должника|должника)\s*[\-–—\s]*([А-Яа-яЁё\s]+?)\s*\((.*?)\)', norm, re.DOTALL | re.IGNORECASE)
+    debtor_fio = ""
+    # Strategy 1: introductory part 'заявление <ФИО> о признании'
+    m_intro = re.search(r'заявление\s+([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+)\s+о признании', single_norm)
+    if m_intro:
+        debtor_fio = m_intro.group(1).strip()
 
-    if m_debtor:
-        raw_debtor_fio = " ".join(m_debtor.group(1).split())
-        details = " ".join(m_debtor.group(2).split())
+    # Strategy 2: 'дело по заявлению должника – <ФИО>'
+    if not debtor_fio:
+        m_fio2 = re.search(r'дело по заявлению должника\s*[\-–—\s]*([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+)', single_norm)
+        if m_fio2:
+            debtor_fio = m_fio2.group(1).strip()
 
-        nomn_debtor = to_nomn_fio(raw_debtor_fio)
+    # Strategy 3: in operative part 'ввести в отношении <ФИО>,' / 'признать гражданина <ФИО>'
+    if not debtor_fio:
+        m_fio3 = re.search(r'(?:ввести в отношении|признать гражданина)\s+([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+)[,\s]+(?:\d{2}\.\d{2}\.\d{4}|\()', single_norm)
+        if m_fio3:
+            debtor_fio = m_fio3.group(1).strip()
+
+    # Strategy 4: fallback to parenthesized block if exists
+    if not debtor_fio:
+        m_debtor = re.search(r'дело по заявлению должника\s*[\-–—]\s*([А-Яа-яЁё\s]+?)\s*\((.*?)\)', norm, re.DOTALL)
+        if not m_debtor:
+            m_debtor = re.search(r'в отношении\s+(?:гражданина[\-–—\s]должника|должника)\s*[\-–—\s]*([А-Яа-яЁё\s]+?)\s*\((.*?)\)', norm, re.DOTALL | re.IGNORECASE)
+        if m_debtor:
+            raw_cand = " ".join(m_debtor.group(1).split())
+            if "супруг" not in raw_cand.lower() and len(raw_cand.split()) == 3:
+                debtor_fio = raw_cand
+
+    if debtor_fio:
+        nomn_debtor = to_nomn_fio(debtor_fio)
         res["debtor_fio"] = nomn_debtor
         res["debtor_fio_gen"] = inflect_fio(nomn_debtor, 'gent')
 
-        mb = re.search(r'(\d{2}\.\d{2}\.\d{4})\s*г\.?\s*р\.?', details)
-        if mb:
-            res["debtor_birth_date"] = mb.group(1)
+    # 4.1 Debtor Details (Birth Date, Birth Place, Address, SNILS, INN)
+    mb = re.search(r'(\d{2}\.\d{2}\.\d{4})\s*г\.?\s*р', single_norm, re.IGNORECASE)
+    if mb:
+        res["debtor_birth_date"] = mb.group(1)
 
-        mp = re.search(r'место рождения:\s*([^,]+)', details, re.IGNORECASE)
-        if mp:
-            res["debtor_birth_place"] = mp.group(1).strip()
+    mp = re.search(r'место рождения:\s*(.*?)(?=\.?\s*[Аа]дрес|\s*ИНН|\s*СНИЛС|;)', single_norm, re.IGNORECASE)
+    if mp:
+        res["debtor_birth_place"] = mp.group(1).strip(' .,')
 
-        ma = re.search(r'адрес регистрации:\s*([^,]+(?:,\s*[^,]+){1,5})', details, re.IGNORECASE)
-        if ma:
-            addr = ma.group(1).strip()
-            addr = re.sub(r',?\s*СНИЛС.*', '', addr, flags=re.IGNORECASE).strip()
-            # Clean accidental intra-word spaces from PDF rendering: e.g. "2 -й пер." -> "2-й пер."
-            addr = re.sub(r'(\d+)\s*[\-–—]\s*([а-яА-ЯёЁ]+)', r'\1-\2', addr)
-            addr = re.sub(r'\s{2,}', ' ', addr)
-            res["debtor_address"] = addr
+    ma = re.search(r'[Аа]дрес(?: места)? регистрации:\s*(.*?)(?=;\s*ИНН|\s*ИНН|,\s*СНИЛС|\s*СНИЛС|\s*реализацию|\s*паспорт|\))', single_norm, re.IGNORECASE)
+    if ma:
+        addr = ma.group(1).strip(' .,;')
+        addr = re.sub(r',?\s*СНИЛС.*', '', addr, flags=re.IGNORECASE).strip()
+        addr = re.sub(r'(\d+)\s*[\-–—]\s*([а-яА-ЯёЁ]+)', r'\1-\2', addr)
+        addr = re.sub(r'\s{2,}', ' ', addr)
+        res["debtor_address"] = addr
 
-        ms = re.search(r'СНИЛС:\s*([\d\s\-]+)', details, re.IGNORECASE)
-        if ms:
-            raw_s = ms.group(1).strip()
-            raw_s = re.sub(r'(\d+)\s*[\-–—]\s*(\d+)', r'\1-\2', raw_s)
-            raw_s = re.sub(r'\s{2,}', ' ', raw_s)
-            res["debtor_snils"] = raw_s
+    ms = re.search(r'СНИЛС[:\s]*(\d{3}[\-–—\s]*\d{3}[\-–—\s]*\d{3}[\-–—\s]*\d{2})', single_norm, re.IGNORECASE)
+    if ms:
+        raw_s = ms.group(1).strip()
+        raw_s = re.sub(r'(\d+)\s*[\-–—]\s*(\d+)', r'\1-\2', raw_s)
+        raw_s = re.sub(r'\s{2,}', ' ', raw_s)
+        res["debtor_snils"] = raw_s
 
-        mi = re.search(r'ИНН:\s*([\d\s]+)', details, re.IGNORECASE)
-        if mi:
-            res["debtor_inn"] = mi.group(1).replace(" ", "").strip()
+    mi = re.search(r'ИНН[:\s]*(\d{12})', single_norm, re.IGNORECASE)
+    if mi:
+        res["debtor_inn"] = mi.group(1)
 
-        # Check passport in details if present
-        mpass = re.search(r'паспорт\s*(\d{2}\s*\d{2}|\d{4})\s*(\d{6})', details, re.IGNORECASE)
-        if mpass:
-            res["debtor_passport_series"] = mpass.group(1).replace(" ", "")
-            res["debtor_passport_number"] = mpass.group(2)
-
-    # 5. Passport in general text if not in debtor header
-    m_pass_all = re.search(r'паспорт(?:ные данные)?[:\s]+сери[яи]\s*(\d{4})\s*№?\s*(\d{6})[,\s]+выдан\s+([^,]+?)[,\s]+(?:дата выдачи[:\s]*)?(\d{2}\.\d{2}\.\d{4})[,\s]+(?:код подразделения[:\s]*)?(\d{3}[\-–—]\d{3})', norm, re.IGNORECASE)
+    # 5. Passport
+    m_pass_all = re.search(r'паспорт(?:ные данные)?[:\s]+сери[яи]?\s*(\d{4})\s*№?\s*(\d{6})[,\s]+выдан\s+([^,]+?)[,\s]+(?:дата выдачи[:\s]*)?(\d{2}\.\d{2}\.\d{4})[,\s]+(?:код подразделения[:\s]*)?(\d{3}[\-–—]\d{3})', single_norm, re.IGNORECASE)
     if m_pass_all:
         res["debtor_passport_series"] = m_pass_all.group(1)
         res["debtor_passport_number"] = m_pass_all.group(2)
@@ -251,44 +281,44 @@ def parse_court_decision(file_path: str) -> Dict[str, Any]:
         res["debtor_passport_date"] = m_pass_all.group(4)
         res["debtor_passport_code"] = m_pass_all.group(5)
 
-    # 6. Spouse Information
-    # "Должник состоит в браке с Ивановой Анной Сергеевной (01.01.1982 г.р.)"
-    m_spouse = re.search(r'Должник состоит в браке\s*с\s*([А-Яа-яЁё\s]+?)\s*\((.*?)\)', norm, re.IGNORECASE)
+    # 6. Spouse Information (only genuine full names)
+    m_spouse = re.search(r'Должник состоит в браке\s*с\s*([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+)', single_norm)
     if m_spouse:
         res["spouse_status"] = "married"
-        raw_spouse = " ".join(m_spouse.group(1).split())
+        raw_spouse = m_spouse.group(1).strip()
         nomn_spouse = to_nomn_fio(raw_spouse)
         res["spouse_fio"] = nomn_spouse
         res["spouse_fio_gen"] = inflect_fio(nomn_spouse, 'gent')
         res["spouse_fio_instr"] = inflect_fio(nomn_spouse, 'ablt')
 
-        s_det = m_spouse.group(2)
-        msb = re.search(r'(\d{2}\.\d{2}\.\d{4})', s_det)
+        after_sp = single_norm[m_spouse.end():m_spouse.end() + 150]
+        msb = re.search(r'(\d{2}\.\d{2}\.\d{4})', after_sp)
         if msb:
             res["spouse_birth_date"] = msb.group(1)
     else:
-        # Check divorced: "состоял в браке с ..."
-        m_divorced = re.search(r'Должник состоял в браке\s*с\s*([А-Яа-яЁё\s]+?)\s*\((.*?)\)', norm, re.IGNORECASE)
+        m_divorced = re.search(r'Должник состоял в браке\s*с\s*([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+)', single_norm)
         if m_divorced:
             res["spouse_status"] = "divorced"
-            raw_spouse = " ".join(m_divorced.group(1).split())
+            raw_spouse = m_divorced.group(1).strip()
             nomn_spouse = to_nomn_fio(raw_spouse)
             res["spouse_fio"] = nomn_spouse
             res["spouse_fio_gen"] = inflect_fio(nomn_spouse, 'gent')
             res["spouse_fio_instr"] = inflect_fio(nomn_spouse, 'ablt')
 
-            s_det = m_divorced.group(2)
-            msb = re.search(r'(\d{2}\.\d{2}\.\d{4})', s_det)
+            after_div = single_norm[m_divorced.end():m_divorced.end() + 150]
+            msb = re.search(r'(\d{2}\.\d{2}\.\d{4})', after_div)
             if msb:
                 res["spouse_birth_date"] = msb.group(1)
+        else:
+            res["spouse_status"] = "not_married"
 
     # 7. Financial Manager in decision
-    m_mgr = re.search(r'(?:Утвердить финансовым управляющим|финансовым управляющим утвержден[ао]?)[^А-ЯЁ]*([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+)\s*\((.*?)\)', norm, re.IGNORECASE)
+    m_mgr = re.search(r'(?i:утвердить финансовым управляющим|финансовым управляющим утвержден[ао]?).*?([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+)', single_norm)
     if m_mgr:
         mgr_raw = m_mgr.group(1).strip()
         res["manager_fio"] = to_nomn_fio(mgr_raw)
-        mgr_det = m_mgr.group(2)
-        m_minn = re.search(r'ИНН\s*(\d{12})', mgr_det)
+        after_mgr = single_norm[m_mgr.end():m_mgr.end() + 300]
+        m_minn = re.search(r'ИНН[:\s]*(\d{12})', after_mgr)
         if m_minn:
             res["manager_inn"] = m_minn.group(1)
 
@@ -303,6 +333,8 @@ class CourtParserWorker(QThread):
     progress = Signal(int, str)
     finished_signal = Signal(dict)
     failed_signal = Signal(str)
+    parsed = Signal(dict)
+    failed = Signal(str)
 
     def __init__(self, file_path: str):
         super().__init__()
@@ -316,5 +348,7 @@ class CourtParserWorker(QThread):
             self.progress.emit(70, "Анализ реквизитов и участников...")
             self.progress.emit(100, "Готово")
             self.finished_signal.emit(res)
+            self.parsed.emit(res)
         except Exception as e:
             self.failed_signal.emit(str(e))
+            self.failed.emit(str(e))

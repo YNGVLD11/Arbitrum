@@ -8,6 +8,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 TEMPLATES_CONFIG = [
     {"id": "banks", "name": "Банки", "file": "_Запрос в банки.docx"},
+    {"id": "creditors_notify", "name": "Уведомление кредиторам", "file": "Уведомление_кредиторам_РИ.docx"},
+    {"id": "employer", "name": "Работодателю", "file": "Запрос_работодателю_РИ.docx"},
     {"id": "administration", "name": "Администрация", "file": "в_Администрацию_должник_супруг_РИ.docx"},
     {"id": "bti", "name": "БТИ", "file": "в_БТИ_РИ.docx"},
     {"id": "gibdd", "name": "ГИБДД", "file": "в_ГИБДД_должник_РИ.docx"},
@@ -103,18 +105,14 @@ def delete_paragraph(paragraph):
     p_elem.getparent().remove(p_elem)
 
 
-def replace_tokens_in_paragraph(p, bold_map: Dict[str, str], font_name: str = "Times New Roman"):
+def replace_tokens_in_paragraph(p, tag_map: Dict[str, str], font_name: str = "Times New Roman"):
     """
-    Replaces {{TAG}} tokens in paragraph text.
-    Inserted fields are rendered in BOLD (bold=True), pure black RGB(0, 0, 0),
-    while boilerplate text is rendered regular (bold=False).
+    Replaces {{TAG}} tokens in paragraph text without adding bold (bold=False),
+    pure black RGB(0, 0, 0), matching original non-bold style requirements.
     """
     text = p.text
     if "{{" not in text:
         return
-
-    # Check if the entire paragraph was previously bold
-    all_was_bold = all(r.bold for r in p.runs) if p.runs else False
 
     pattern = re.compile(r'(\{\{[A-Z0-9_]+\}\})')
     tokens = pattern.split(text)
@@ -123,23 +121,104 @@ def replace_tokens_in_paragraph(p, bold_map: Dict[str, str], font_name: str = "T
     for token in tokens:
         if not token:
             continue
-        if token in bold_map:
-            val = bold_map[token]
+        if token in tag_map:
+            val = tag_map[token]
             if val:
                 run = p.add_run(val)
-                run.bold = True
+                run.bold = False
                 run.font.name = font_name
                 run.font.color.rgb = RGBColor(0, 0, 0)
         else:
             run = p.add_run(token)
-            run.bold = all_was_bold
+            run.bold = False
             run.font.name = font_name
             run.font.color.rgb = RGBColor(0, 0, 0)
 
 
-def replace_tokens_in_cell(cell, bold_map: Dict[str, str], font_name: str = "Times New Roman"):
+def replace_tokens_in_cell(cell, tag_map: Dict[str, str], font_name: str = "Times New Roman"):
     for p in cell.paragraphs:
-        replace_tokens_in_paragraph(p, bold_map, font_name)
+        replace_tokens_in_paragraph(p, tag_map, font_name)
+
+
+def detect_region_info(address: str, court_name: str) -> dict:
+    """
+    Detects regional agency names based on debtor address and court name.
+    """
+    txt = f"{address} {court_name}".lower()
+
+    if "москв" in txt:
+        return {
+            "name": "Москва",
+            "region_adj": "г. Москве",
+            "admin": "Администрация города Москвы\n125032, г. Москва, ул. Тверская, 13",
+            "bti": "ГБУ МосгорБТИ\n125047, г. Москва, 1-й Красногвардейский проезд, д. 21, стр. 1",
+            "gibdd": "УГИБДД ГУ МВД России по г. Москве\n127473, г. Москва, ул. Садовая-Самотечная, д. 1",
+            "gims": "Центр ГИМС ГУ МЧС России по г. Москве\n119034, г. Москва, ул. Пречистенка, д. 22/2, стр. 1",
+            "gostekhnadzor": "Гостехнадзор города Москвы\n107078, г. Москва, Боярский переулок, д. 4",
+            "zags": "Управление ЗАГС Москвы\n125009, г. Москва, Вознесенский пер., д. 8",
+            "ifns": "УФНС России по г. Москве\n125284, г. Москва, Хорошевское шоссе, д. 12А",
+            "rosgvardiya": "Главное управление Росгвардии по г. Москве\n119049, г. Москва, ул. Шаболовка, д. 6",
+            "rosimushchestvo": "ТУ Росимущества в городе Москве\n107139, г. Москва, Орликов пер., д. 3, корп. Б",
+            "rosreestr": "Управление Росреестра по Москве\n115191, г. Москва, ул. Большая Тульская, д. 15",
+            "fssp": "ГУФССП России по г. Москве\n125047, г. Москва, ул. Бутырский Вал, д. 5",
+            "sfr": "Отделение СФР по г. Москве и Московской области\n125009, г. Москва, Тверской б-р, д. 18, стр. 1",
+            "uvm": "УВМ ГУ МВД России по г. Москве\n115035, г. Москва, ул. Большая Ордынка, д. 16/4, стр. 4"
+        }
+    elif "петербург" in txt or "ленинградск" in txt:
+        return {
+            "name": "Санкт-Петербург",
+            "region_adj": "г. Санкт-Петербургу",
+            "admin": "Администрация Губернатора Санкт-Петербурга\n191060, г. Санкт-Петербург, Смольный проезд, д. 1",
+            "bti": "ГУП «ГУИОН» (БТИ Санкт-Петербурга)\n191014, г. Санкт-Петербург, ул. Маяковского, д. 19/15",
+            "gibdd": "УГИБДД ГУ МВД России по г. Санкт-Петербургу и Ленинградской области\n197376, г. Санкт-Петербург, ул. Профессора Попова, д. 42",
+            "gims": "Центр ГИМС ГУ МЧС России по г. Санкт-Петербургу\n190000, г. Санкт-Петербург, ул. Набережная Мойки, д. 85",
+            "gostekhnadzor": "Гостехнадзор Санкт-Петербурга\n191124, г. Санкт-Петербург, Суворовский пр., д. 62",
+            "zags": "Комитет по делам ЗАГС Санкт-Петербурга\n191015, г. Санкт-Петербург, Таврическая ул., д. 39",
+            "ifns": "УФНС России по Санкт-Петербургу\n191180, г. Санкт-Петербург, пр-кт Римского-Корсакова, д. 51",
+            "rosgvardiya": "Главное управление Росгвардии по г. Санкт-Петербургу и Ленинградской области\n192019, г. Санкт-Петербург, наб. Обводного канала, д. 24",
+            "rosimushchestvo": "ТУ Росимущества в городе Санкт-Петербурге и Ленинградской области\n191186, г. Санкт-Петербург, ул. Гороховая, д. 2/6",
+            "rosreestr": "Управление Росреестра по Санкт-Петербургу\n191124, г. Санкт-Петербург, ул. Красного Текстильщика, д. 10-12",
+            "fssp": "ГУФССП России по г. Санкт-Петербургу\n190000, г. Санкт-Петербург, ул. Большая Морская, д. 59",
+            "sfr": "Отделение СФР по г. Санкт-Петербургу и Ленинградской области\n194292, г. Санкт-Петербург, пр-кт Энгельса, д. 73",
+            "uvm": "УВМ ГУ МВД России по г. Санкт-Петербургу и Ленинградской области\n191028, г. Санкт-Петербург, ул. Кирочная, д. 4, лит. А"
+        }
+    elif "кемеров" in txt or "кузбасс" in txt:
+        return {
+            "name": "Кемерово",
+            "region_adj": "Кемеровской области - Кузбассу",
+            "admin": "Администрация города Кемерово\n650000, Кемеровская область - Кузбасс, г. Кемерово, пр-кт Советский, д. 54",
+            "bti": "ГП Кемеровской области «Центр технической инвентаризации»\n650000, Кемеровская область - Кузбасс, г. Кемерово, ул. Заузелкова, д. 5",
+            "gibdd": "УГИБДД ГУ МВД России по Кемеровской области - Кузбассу\n650000, Кемеровская область - Кузбасс, г. Кемерово, ул. Баумана, д. 59",
+            "gims": "Центр ГИМС ГУ МЧС России по Кемеровской области - Кузбассу\n650000, Кемеровская область - Кузбасс, г. Кемерово, ул. Красная, д. 4",
+            "gostekhnadzor": "Инспекция гостехнадзора Кузбасса\n650000, Кемеровская область - Кузбасс, г. Кемерово, пр-кт Советский, д. 58",
+            "zags": "Управление ЗАГС Кузбасса\n650000, Кемеровская область - Кузбасс, г. Кемерово, пр-кт Советский, д. 56",
+            "ifns": "УФНС России по Кемеровской области - Кузбассу\n650000, Кемеровская область - Кузбасс, г. Кемерово, пр-кт Кузнецкий, д. 11",
+            "rosgvardiya": "Управление Росгвардии по Кемеровской области - Кузбассу\n650000, Кемеровская область - Кузбасс, г. Кемерово, ул. Рукавишникова, д. 22",
+            "rosimushchestvo": "ТУ Росимущества в Кемеровской области - Кузбассе\n650000, Кемеровская область - Кузбасс, г. Кемерово, ул. Ноградская, д. 5",
+            "rosreestr": "Управление Росреестра по Кемеровской области - Кузбассу\n650000, Кемеровская область - Кузбасс, г. Кемерово, пр-кт Октябрьский, д. 3г",
+            "fssp": "ГУФССП России по Кемеровской области - Кузбассу\n650000, Кемеровская область - Кузбасс, г. Кемерово, пр-кт Советский, д. 30",
+            "sfr": "Отделение СФР по Кемеровской области - Кузбассу\n650000, Кемеровская область - Кузбасс, г. Кемерово, пр-кт Советский, д. 43",
+            "uvm": "УВМ ГУ МВД России по Кемеровской области - Кузбассу\n650000, Кемеровская область - Кузбасс, г. Кемерово, ул. Островского, д. 17"
+        }
+    else:
+        # Default Novosibirsk region
+        return {
+            "name": "Новосибирск",
+            "region_adj": "Новосибирской области",
+            "admin": "Мэрия Города Новосибирска\n630099, Новосибирская область, город Новосибирск, Красный пр-кт, д.34",
+            "bti": 'ГОСУДАРСТВЕННОЕ БЮДЖЕТНОЕ УЧРЕЖДЕНИЕ НОВОСИБИРСКОЙ ОБЛАСТИ "НОВОСИБИРСКИЙ ЦЕНТР КАДАСТРОВОЙ ОЦЕНКИ И ИНВЕНТАРИЗАЦИИ"\n630004, Новосибирская область, г. Новосибирск, ул. Сибирская, д. 15',
+            "gibdd": "ГУ МВД РОССИИ ПО НОВОСИБИРСКОЙ ОБЛАСТИ\n630099, Новосибирская область, г. Новосибирск, ул. Октябрьская, д. 78",
+            "gims": 'ФКУ "ЦЕНТР ГИМС МЧС РОССИИ ПО НОВОСИБИРСКОЙ ОБЛАСТИ"\n630099, Новосибирская область, г. Новосибирск, ул. Семьи Шамшиных, д. 37',
+            "gostekhnadzor": "ИНСПЕКЦИЯ ГОСТЕХНАДЗОРА НОВОСИБИРСКОЙ ОБЛАСТИ\n630007, Новосибирская область, г. Новосибирск, пр-кт Красный, д. 18",
+            "zags": "Дворец бракосочетания г. Новосибирска (отдел)\n630091, г. Новосибирск, Красный проспект, д. 68",
+            "ifns": "УФНС России по Новосибирской области\n630005, г. Новосибирск, ул. Каменская, д. 49",
+            "rosgvardiya": "УПРАВЛЕНИЕ РОСГВАРДИИ ПО НОВОСИБИРСКОЙ ОБЛАСТИ\n630108, Новосибирская область, г. Новосибирск, ул. Станционная, д. 14",
+            "rosimushchestvo": "ТУ РОСИМУЩЕСТВА В НОВОСИБИРСКОЙ ОБЛАСТИ\n630004, Новосибирская область, г. Новосибирск, ул. Революции, д. 38",
+            "rosreestr": "УПРАВЛЕНИЕ РОСРЕЕСТРА ПО НОВОСИБИРСКОЙ ОБЛАСТИ\n630091, Новосибирская область, г. Новосибирск, ул. Державина, зд. 28",
+            "fssp": "ГУФССП РОССИИ ПО НОВОСИБИРСКОЙ ОБЛАСТИ\n630005, Новосибирская область, г. Новосибирск, пр-кт Красный, д. 86/1",
+            "sfr": "ОСФР ПО НОВОСИБИРСКОЙ ОБЛАСТИ\n630007, Новосибирская область, г. Новосибирск, ул. Серебренниковская, зд. 19/1",
+            "uvm": "Главное управление МВД по Новосибирской области\n630099, Новосибирская область, г. Новосибирск, ул. Октябрьская, д. 78"
+        }
 
 
 def generate_single_inquiry(
@@ -157,13 +236,40 @@ def generate_single_inquiry(
 
     case_no = data.get("case_number", "").strip()
     decision_date = data.get("decision_date", "").strip()
-    three_years_ago_date = calc_3_years_ago(decision_date)
-    inquiry_date_str = format_russian_date_words(decision_date)
+    petition_date = data.get("petition_date", "").strip()
+
+    # Three years ago calculated from petition_date if provided, else decision_date
+    ref_date_for_3_years = petition_date or decision_date
+    three_years_ago_date = calc_3_years_ago(ref_date_for_3_years)
+
+    # Employer inquiry 2-NDFL date requirement: exactly 01.01.{ref_year - 3}
+    employer_year = datetime.now().year
+    if ref_date_for_3_years:
+        match_y = re.search(r'(\d{4})', ref_date_for_3_years)
+        if match_y:
+            employer_year = int(match_y.group(1))
+    employer_three_years_ago_date = f"01.01.{employer_year - 3}"
+
+    # Header date in outgoing inquiry ("Исх. № ... от ..."): always current system date
+    inquiry_date_str = format_russian_date_words("")
 
     # Debtor
     debtor_fio = data.get("debtor_fio", "").strip()
-    debtor_fio_gen = data.get("debtor_fio_gen", "").strip() or debtor_fio
-    debtor_fio_instr = data.get("debtor_fio_instr", "").strip() or debtor_fio
+    debtor_fio_gen = data.get("debtor_fio_gen", "").strip()
+    if not debtor_fio_gen and debtor_fio:
+        try:
+            from core.court_parser import inflect_fio
+            debtor_fio_gen = inflect_fio(debtor_fio, 'gent')
+        except Exception:
+            debtor_fio_gen = debtor_fio
+
+    debtor_fio_instr = data.get("debtor_fio_instr", "").strip()
+    if not debtor_fio_instr and debtor_fio:
+        try:
+            from core.court_parser import inflect_fio
+            debtor_fio_instr = inflect_fio(debtor_fio, 'ablt')
+        except Exception:
+            debtor_fio_instr = debtor_fio
     debtor_short_fio = to_short_fio(debtor_fio)
     debtor_birth = data.get("debtor_birth_date", "").strip()
     debtor_place = data.get("debtor_birth_place", "").strip()
@@ -179,7 +285,7 @@ def generate_single_inquiry(
 
     # Manager (fixed Gusarova Ksenia Andreevna)
     manager_fio = data.get("manager_fio", "").strip() or "Гусарова Ксения Андреевна"
-    manager_short_fio = to_manager_short_fio(manager_fio)
+    manager_short_fio = to_manager_short_fio(manager_fio) or "К. А. Гусарова"
     manager_inn = data.get("manager_inn", "").strip() or "380470431942"
     manager_snils = data.get("manager_snils", "").strip() or "136-556-599 95"
     manager_corr_address = data.get("manager_corr_address", "").strip() or "630007, г. Новосибирск, а/я 1"
@@ -206,9 +312,66 @@ def generate_single_inquiry(
 
     has_spouse = (spouse_status in ("married", "divorced")) and bool(spouse_fio)
 
+    # Employer Info
+    employer_name = data.get("employer_name", "").strip()
+    employer_addr = data.get("employer_address", "").strip()
+    employer_inn = data.get("employer_inn", "").strip()
+    employer_lines = []
+    if employer_name:
+        employer_lines.append(employer_name)
+    if employer_addr:
+        employer_lines.append(f"Адрес: {employer_addr}")
+    if employer_inn:
+        employer_lines.append(f"ИНН: {employer_inn}")
+    employer_info_str = "\n".join(employer_lines) if employer_lines else "Работодателю"
+
+    # Creditors Info
+    creditors_list = data.get("creditors", [])
+    creditors_blocks = []
+    for c in creditors_list:
+        c_name = c.get("name", "").strip()
+        c_addr = c.get("address", "").strip()
+        c_inn = c.get("inn", "").strip()
+        if not c_name and not c_addr:
+            continue
+        blk = []
+        if c_name:
+            blk.append(c_name)
+        if c_addr:
+            blk.append(f"Адрес: {c_addr}")
+        if c_inn:
+            blk.append(f"ИНН: {c_inn}")
+        creditors_blocks.append("\n".join(blk))
+
+    creditors_info_str = "\n\n".join(creditors_blocks) if creditors_blocks else "Кредиторам"
+
     base_name = os.path.basename(template_path)
+    region_info = detect_region_info(debtor_address, court_name)
 
     # 1. Template-specific structural adjustments
+    # Dynamic agency recipient replacement based on debtor's region
+    agency_key_map = {
+        "Администрацию": "admin",
+        "БТИ": "bti",
+        "ГИБДД": "gibdd",
+        "ГИМС": "gims",
+        "Гостехнадзор": "gostekhnadzor",
+        "ЗАГС": "zags",
+        "ИФНС": "ifns",
+        "Росгвардию": "rosgvardiya",
+        "Росимущество": "rosimushchestvo",
+        "Росреестр": "rosreestr",
+        "ССП": "fssp",
+        "СФР": "sfr",
+        "УВМ": "uvm",
+    }
+
+    for keyword, reg_key in agency_key_map.items():
+        if keyword in base_name and len(doc.tables) > 0:
+            t0 = doc.tables[0]
+            if len(t0.rows) > 1 and len(t0.rows[1].cells) > 1:
+                t0.rows[1].cells[1].text = region_info.get(reg_key, "")
+
     # A) Должнику_супругу_РИ.docx
     if "Должнику_супругу" in base_name and len(doc.tables) > 0:
         table0 = doc.tables[0]
@@ -218,18 +381,13 @@ def generate_single_inquiry(
                 c.text = f"{debtor_fio}\n{debtor_address}\n{spouse_fio}\n{spouse_address}"
             else:
                 c.text = f"{debtor_fio}\n{debtor_address}"
-            for cp in c.paragraphs:
-                for cr in cp.runs:
-                    cr.font.name = "Times New Roman"
 
     # B) в_ЕГРН_(сокращенный)_должник_супруг_РИ.docx
     if "ЕГРН" in base_name and not has_spouse:
-        # Tables 3, 4, 5 are for spouse - remove them if single
         while len(doc.tables) > 3:
             t = doc.tables[3]
             t_elem = t._tbl
             t_elem.getparent().remove(t_elem)
-        # Remove subsequent paragraphs 3+
         while len(doc.paragraphs) > 3:
             delete_paragraph(doc.paragraphs[3])
 
@@ -299,11 +457,13 @@ def generate_single_inquiry(
             if "{{DEBTOR_PASS_SERIES}}" in p.text:
                 p.text = pass_pattern.sub(")", p.text)
 
-    # 4. Comprehensive Bold Replacement Map
-    bold_map = {
+    # 4. Replacement Map (regular text, no bold)
+    tag_map = {
         "{{CASE_NUMBER}}": case_no,
+        "{{COURT_NAME}}": court_name,
         "{{COURT_NAME_GEN}}": court_dec_str,
         "{{DECISION_DATE}}": decision_date,
+        "{{PETITION_DATE}}": petition_date,
         "{{DEBTOR_FIO}}": debtor_fio,
         "{{DEBTOR_FIO_GEN}}": debtor_fio_gen,
         "{{DEBTOR_FIO_INSTR}}": debtor_fio_instr,
@@ -322,7 +482,7 @@ def generate_single_inquiry(
         "{{MANAGER_SHORT_FIO}}": manager_short_fio,
         "{{MANAGER_INN}}": manager_inn,
         "{{MANAGER_SNILS}}": manager_snils,
-        "{{THREE_YEARS_AGO_DATE}}": three_years_ago_date,
+        "{{THREE_YEARS_AGO_DATE}}": employer_three_years_ago_date if "работодател" in base_name.lower() else three_years_ago_date,
         "{{INQUIRY_DATE_STR}}": inquiry_date_str,
         "{{MARRIAGE_DATE}}": marriage_date,
         "{{SPOUSE_FIO}}": spouse_fio,
@@ -338,11 +498,13 @@ def generate_single_inquiry(
         "{{SPOUSE_PASS_ISSUED_BY}}": spouse_pass_b,
         "{{SPOUSE_PASS_DATE}}": spouse_pass_d,
         "{{SPOUSE_PASS_CODE}}": spouse_pass_c,
+        "{{EMPLOYER_INFO}}": employer_info_str,
+        "{{CREDITORS_INFO}}": creditors_info_str,
     }
 
     # 5. Process all Document Paragraphs
     for p in doc.paragraphs:
-        replace_tokens_in_paragraph(p, bold_map)
+        replace_tokens_in_paragraph(p, tag_map)
 
     # 5.5 Replace Manager Contact details if customized
     default_addr = "630007, г. Новосибирск, а/я 1"
@@ -361,7 +523,7 @@ def generate_single_inquiry(
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
-                replace_tokens_in_cell(cell, bold_map)
+                replace_tokens_in_cell(cell, tag_map)
                 for cp in cell.paragraphs:
                     if manager_corr_address and manager_corr_address != default_addr and default_addr in cp.text:
                         cp.text = cp.text.replace(default_addr, manager_corr_address)
@@ -381,6 +543,29 @@ def generate_single_inquiry(
                     for cp in cell.paragraphs:
                         if "{{" in cp.text:
                             cp.text = re.sub(r'\{\{[A-Z0-9_]+\}\}', '', cp.text)
+
+    # 8. Ensure font sizes: P0 is 8pt, rest is 10pt
+    if 'Normal' in doc.styles:
+        doc.styles['Normal'].font.size = Pt(10)
+        doc.styles['Normal'].font.name = 'Times New Roman'
+
+    for i, p in enumerate(doc.paragraphs):
+        if i == 0 and "финансовый управляющий" in p.text.lower():
+            for r in p.runs:
+                r.font.size = Pt(8)
+                r.font.name = 'Times New Roman'
+        else:
+            for r in p.runs:
+                if r.font.size and r.font.size.pt > 10.0:
+                    r.font.size = Pt(10)
+
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for cp in cell.paragraphs:
+                    for cr in cp.runs:
+                        if cr.font.size and cr.font.size.pt > 10.0:
+                            cr.font.size = Pt(10)
 
     out_dir = os.path.dirname(output_path)
     if out_dir:

@@ -82,7 +82,7 @@ class Sidebar(QFrame):
         layout.addStretch()
 
         # Bottom Settings Button
-        self.btn_settings = QPushButton("⚙️  Настройки", self)
+        self.btn_settings = QPushButton("Настройки", self)
         self.btn_settings.setObjectName("sidebarSettingsButton")
         self.btn_settings.setFixedHeight(40)
         self.btn_settings.setCursor(Qt.PointingHandCursor)

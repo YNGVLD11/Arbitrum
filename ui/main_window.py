@@ -19,6 +19,7 @@ from ui.settings_dialog import SettingsDialog, AppSettings
 from ui.progress_dialog import BuildProgressDialog
 from ui.success_dialog import BuildSuccessDialog
 from core.converter import build_arbitr_report
+from core.database import DatabaseManager
 
 
 class BuildWorker(QThread):
@@ -84,6 +85,7 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(get_app_icon())
 
         self.app_settings = AppSettings()
+        self.db_manager = DatabaseManager()
         self.feminine_painter = FeminineBackgroundPainter()
         self.sky_painter = SkyBackgroundPainter()
         self.current_theme = self.app_settings.theme
@@ -156,6 +158,7 @@ class MainWindow(QMainWindow):
         # PAGE 1: Генератор запросов (Inquiry Generator View)
         # -------------------------------------------------------------
         self.inquiry_panel = InquiryGeneratorPanel(settings=self.app_settings, parent=self)
+        self.inquiry_panel.debtor_parsed.connect(self._on_debtor_parsed)
         self.stack.addWidget(self.inquiry_panel)
 
         self._update_build_button_state()
@@ -199,6 +202,26 @@ class MainWindow(QMainWindow):
         if hasattr(self, "inquiry_panel"):
             self.inquiry_panel.set_theme(theme_name)
         self.update()
+
+    def _on_debtor_parsed(self, debtor_data: dict):
+        full_name = debtor_data.get("full_name", "").strip()
+        if not full_name:
+            return
+        self.db_manager.add_debtor(
+            full_name=full_name,
+            case_number=debtor_data.get("case_number", ""),
+            snils=debtor_data.get("snils", ""),
+            inn=debtor_data.get("inn", ""),
+            passport_data=debtor_data.get("passport_data", ""),
+            address=debtor_data.get("address", "")
+        )
+
+    def _on_send_files_to_build(self, file_paths: list[str]):
+        if not file_paths:
+            return
+        self.file_list_panel.add_files(file_paths)
+        self.sidebar.set_current_page(0)
+        self.stack.setCurrentIndex(0)
 
     def _open_settings(self):
         dlg = SettingsDialog(self)

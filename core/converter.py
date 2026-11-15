@@ -4,7 +4,10 @@ import shutil
 import threading
 import pypdf
 
-# Dimensions for A4 in points (297 mm x 210 mm)
+# Dimensions for A4 in points (210 mm x 297 mm)
+A4_PORTRAIT_W = 595.28
+A4_PORTRAIT_H = 841.89
+A4_HALF_H = A4_PORTRAIT_H / 2.0
 A4_LANDSCAPE_W = 841.89
 A4_LANDSCAPE_H = 595.28
 A4_HALF_W = A4_LANDSCAPE_W / 2.0
@@ -66,51 +69,57 @@ def convert_word_to_pdf(doc_path: str, output_pdf_path: str):
                 pass
 
 
-def _transform_and_merge_page(sheet, page, is_right: bool = False):
+def _place_page_in_slot(sheet: pypdf.PageObject, page: pypdf.PageObject, slot_index: int):
     """
-    Helper to scale and translate (and rotate if needed) a page onto a 2-up landscape sheet.
+    Places an input page into one of two half-page slots on an A4 portrait sheet.
+    slot_index 0: bottom half (Y in [0, A4_HALF_H]), corresponds to left page when rotated.
+    slot_index 1: top half (Y in [A4_HALF_H, A4_PORTRAIT_H]), corresponds to right page when rotated.
     """
-    rot = getattr(page, 'rotation', 0) % 360
     orig_w = float(page.mediabox.width)
     orig_h = float(page.mediabox.height)
-    if rot in (90, 270):
-        pw, ph = orig_h, orig_w
-    else:
-        pw, ph = orig_w, orig_h
+    rot = getattr(page, 'rotation', 0) % 360
 
-    scale = min(A4_HALF_W / pw, A4_LANDSCAPE_H / ph)
-    offset_x = A4_HALF_W if is_right else 0.0
-    tx = offset_x + (A4_HALF_W - pw * scale) / 2.0
-    ty = (A4_LANDSCAPE_H - ph * scale) / 2.0
+    pw, ph = (orig_h, orig_w) if rot in (90, 270) else (orig_w, orig_h)
+    is_portrait = (ph >= pw)
 
-    t = pypdf.Transformation()
-    if rot == 90:
-        t = t.rotate(90).scale(scale, scale).translate(tx + pw * scale, ty)
-    elif rot == 180:
-        t = t.rotate(180).scale(scale, scale).translate(tx + pw * scale, ty + ph * scale)
-    elif rot == 270:
-        t = t.rotate(270).scale(scale, scale).translate(tx, ty + ph * scale)
-    else:
-        t = t.scale(scale, scale).translate(tx, ty)
-
-    # Use a blank unrotated container to cleanly project the page
     page_copy = pypdf.PageObject.create_blank_page(width=orig_w, height=orig_h)
     page_copy.merge_page(page)
-    sheet.merge_transformed_page(page_copy, t)
+
+    y_offset = slot_index * A4_HALF_H
+
+    if is_portrait:
+        # Rotate 90 deg CCW so text flows horizontally across the vertical sheet
+        scale = min(A4_PORTRAIT_W / ph, A4_HALF_H / pw)
+        fitted_w = ph * scale
+        fitted_h = pw * scale
+        tx = (A4_PORTRAIT_W - fitted_w) / 2.0 + fitted_w
+        ty = y_offset + (A4_HALF_H - fitted_h) / 2.0
+        t = pypdf.Transformation().rotate(90).scale(scale, scale).translate(tx, ty)
+        sheet.merge_transformed_page(page_copy, t)
+    else:
+        # Page is already landscape: fits directly into slot
+        scale = min(A4_PORTRAIT_W / pw, A4_HALF_H / ph)
+        fitted_w = pw * scale
+        fitted_h = ph * scale
+        tx = (A4_PORTRAIT_W - fitted_w) / 2.0
+        ty = y_offset + (A4_HALF_H - fitted_h) / 2.0
+        t = pypdf.Transformation().scale(scale, scale).translate(tx, ty)
+        sheet.merge_transformed_page(page_copy, t)
 
 
 def add_sheet_2up(writer: pypdf.PdfWriter, left_page=None, right_page=None):
     """
-    Adds a single A4 Landscape sheet with up to 2 pages (left and right).
-    Calculates exact scale, centering, and rotation for both portrait and landscape pages.
+    Adds a single A4 Portrait sheet (210 x 297 mm, 595.28 x 841.89 pt) containing
+    up to 2 pages (bottom and top halves, corresponding to left and right in reading orientation).
+    Complies strictly with Russian Post electronic registered letter requirements (A4, 210 x 297 mm).
     """
-    sheet = writer.add_blank_page(width=A4_LANDSCAPE_W, height=A4_LANDSCAPE_H)
+    sheet = writer.add_blank_page(width=A4_PORTRAIT_W, height=A4_PORTRAIT_H)
 
     if left_page is not None:
-        _transform_and_merge_page(sheet, left_page, is_right=False)
+        _place_page_in_slot(sheet, left_page, slot_index=0)
 
     if right_page is not None:
-        _transform_and_merge_page(sheet, right_page, is_right=True)
+        _place_page_in_slot(sheet, right_page, slot_index=1)
 
     return sheet
 
@@ -351,7 +360,7 @@ def build_arbitr_report(
                 writer.add_page(p)
             sheet_count = total_input_pages
         else:
-            # 2-up compact A4 Landscape
+            # 2-up compact A4 Portrait (2 pages per sheet)
             sheet_count = 0
             idx = 0
             while idx < total_input_pages:
@@ -360,33 +369,11 @@ def build_arbitr_report(
                 report(pct, f"Размещение страниц на листах ({idx + 1} из {total_input_pages})...")
 
                 page1 = collected_pages[idx]
-                rot1 = getattr(page1, 'rotation', 0) % 360
-                orig_w1 = float(page1.mediabox.width)
-                orig_h1 = float(page1.mediabox.height)
-                pw1, ph1 = (orig_h1, orig_w1) if rot1 in (90, 270) else (orig_w1, orig_h1)
-                is_land1 = pw1 > ph1
+                page2 = collected_pages[idx + 1] if (idx + 1 < total_input_pages) else None
 
-                if is_land1:
-                    add_sheet_2up(writer, left_page=page1, right_page=None)
-                    sheet_count += 1
-                    idx += 1
-                else:
-                    page2 = None
-                    if idx + 1 < total_input_pages:
-                        next_p = collected_pages[idx + 1]
-                        rot2 = getattr(next_p, 'rotation', 0) % 360
-                        orig_w2 = float(next_p.mediabox.width)
-                        orig_h2 = float(next_p.mediabox.height)
-                        pw2, ph2 = (orig_h2, orig_w2) if rot2 in (90, 270) else (orig_w2, orig_h2)
-                        is_land2 = pw2 > ph2
-
-                        if not is_land2 or not new_sheet_for_landscape:
-                            page2 = next_p
-                            idx += 1
-
-                    add_sheet_2up(writer, left_page=page1, right_page=page2)
-                    sheet_count += 1
-                    idx += 1
+                add_sheet_2up(writer, left_page=page1, right_page=page2)
+                sheet_count += 1
+                idx += 2 if page2 is not None else 1
 
         check_cancel()
         report(95, "Сохранение итогового PDF-файла...")

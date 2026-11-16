@@ -8,13 +8,17 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QPainter
 
 from ui.themes import (
-    THEME_LIGHT, THEME_FEMININE, LIGHT_QSS, FEMININE_QSS,
-    FeminineBackgroundPainter, SkyBackgroundPainter, get_app_icon
+    THEME_LIGHT, THEME_FEMININE, THEME_CAPPUCCINO, THEME_LAVENDER,
+    LIGHT_QSS, FEMININE_QSS, CAPPUCCINO_QSS, LAVENDER_QSS,
+    FeminineBackgroundPainter, SkyBackgroundPainter,
+    CappuccinoBackgroundPainter, LavenderBackgroundPainter,
+    get_app_icon
 )
 from ui.sidebar import Sidebar
 from ui.file_list import FileListPanel
 from ui.preview_panel import DocumentPreviewPanel
 from ui.inquiry_panel import InquiryGeneratorPanel
+from ui.kartoteka_panel import KartotekaPanel
 from ui.settings_dialog import SettingsDialog, AppSettings
 from ui.progress_dialog import BuildProgressDialog
 from ui.success_dialog import BuildSuccessDialog
@@ -79,7 +83,7 @@ class MainWindow(QMainWindow):
     """
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Арбитум")
+        self.setWindowTitle("Арбитрум")
         self.resize(1180, 750)
         self.setMinimumSize(960, 600)
         self.setWindowIcon(get_app_icon())
@@ -88,6 +92,8 @@ class MainWindow(QMainWindow):
         self.db_manager = DatabaseManager()
         self.feminine_painter = FeminineBackgroundPainter()
         self.sky_painter = SkyBackgroundPainter()
+        self.cappuccino_painter = CappuccinoBackgroundPainter()
+        self.lavender_painter = LavenderBackgroundPainter()
         self.current_theme = self.app_settings.theme
         self.worker = None
 
@@ -157,9 +163,16 @@ class MainWindow(QMainWindow):
         # -------------------------------------------------------------
         # PAGE 1: Генератор запросов (Inquiry Generator View)
         # -------------------------------------------------------------
-        self.inquiry_panel = InquiryGeneratorPanel(settings=self.app_settings, parent=self)
-        self.inquiry_panel.debtor_parsed.connect(self._on_debtor_parsed)
+        self.inquiry_panel = InquiryGeneratorPanel(settings=self.app_settings, db_manager=self.db_manager, parent=self)
         self.stack.addWidget(self.inquiry_panel)
+
+        # -------------------------------------------------------------
+        # PAGE 2: Картотека (Debtor Repository View)
+        # -------------------------------------------------------------
+        self.kartoteka_panel = KartotekaPanel(db_manager=self.db_manager, settings=self.app_settings, parent=self)
+        self.kartoteka_panel.debtors_changed.connect(self.inquiry_panel.refresh_debtors_list)
+        self.kartoteka_panel.debtor_selected_for_inquiry.connect(self._on_debtor_selected_for_inquiry)
+        self.stack.addWidget(self.kartoteka_panel)
 
         self._update_build_button_state()
 
@@ -183,6 +196,10 @@ class MainWindow(QMainWindow):
         painter = QPainter(self)
         if self.current_theme == THEME_FEMININE:
             self.feminine_painter.draw(painter, QRectF(self.rect()))
+        elif self.current_theme == THEME_CAPPUCCINO:
+            self.cappuccino_painter.draw(painter, QRectF(self.rect()))
+        elif self.current_theme == THEME_LAVENDER:
+            self.lavender_painter.draw(painter, QRectF(self.rect()))
         else:
             self.sky_painter.draw(painter, QRectF(self.rect()))
         painter.end()
@@ -192,6 +209,10 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if theme_name == THEME_FEMININE:
             app.setStyleSheet(FEMININE_QSS)
+        elif theme_name == THEME_CAPPUCCINO:
+            app.setStyleSheet(CAPPUCCINO_QSS)
+        elif theme_name == THEME_LAVENDER:
+            app.setStyleSheet(LAVENDER_QSS)
         else:
             app.setStyleSheet(LIGHT_QSS)
 
@@ -201,7 +222,14 @@ class MainWindow(QMainWindow):
             self.preview_panel.set_theme(theme_name)
         if hasattr(self, "inquiry_panel"):
             self.inquiry_panel.set_theme(theme_name)
+        if hasattr(self, "kartoteka_panel"):
+            self.kartoteka_panel.refresh_table()
         self.update()
+
+    def _on_debtor_selected_for_inquiry(self, debtor_dict: dict):
+        self.sidebar.set_current_page(1)
+        self.stack.setCurrentIndex(1)
+        self.inquiry_panel.load_debtor(debtor_dict)
 
     def _on_debtor_parsed(self, debtor_data: dict):
         full_name = debtor_data.get("full_name", "").strip()
@@ -232,6 +260,10 @@ class MainWindow(QMainWindow):
         new_theme = self.app_settings.theme
         if new_theme != self.current_theme:
             self._apply_theme(new_theme)
+        if hasattr(self, "inquiry_panel"):
+            self.inquiry_panel._fill_default_manager_values()
+            if hasattr(self.inquiry_panel, "_cached_address_prefixes"):
+                delattr(self.inquiry_panel, "_cached_address_prefixes")
         self._update_build_button_state()
 
     def _on_file_selected(self, file_path: str):

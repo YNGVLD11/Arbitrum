@@ -1,16 +1,36 @@
 import os
-from PySide6.QtCore import Qt, Signal
+import json
+from PySide6.QtCore import Qt, Signal, QObject, QEvent, QPoint
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QLineEdit, QCheckBox, QRadioButton, QButtonGroup, QScrollArea,
-    QFrame, QFileDialog, QMessageBox, QProgressBar, QToolTip
+    QLineEdit, QComboBox, QCheckBox, QRadioButton, QButtonGroup, QScrollArea,
+    QFrame, QFileDialog, QMessageBox, QProgressBar, QToolTip, QCompleter
 )
 from PySide6.QtGui import QCursor
 from ui.themes import THEME_FEMININE
 from core.court_parser import CourtParserWorker, parse_court_decision, inflect_fio, to_nomn_fio
 from core.inquiry_generator import TEMPLATES_CONFIG, generate_inquiries
+from core.database import DatabaseManager
 from ui.progress_dialog import BuildProgressDialog
 from ui.inquiry_success_dialog import InquirySuccessDialog
+
+
+class _CompleterPopupFilter(QObject):
+    """
+    Event filter that forces the QCompleter popup list to always appear
+    directly beneath the target QLineEdit.
+    """
+    def __init__(self, line_edit: QLineEdit, parent=None):
+        super().__init__(parent)
+        self.line_edit = line_edit
+
+    def eventFilter(self, obj, event):
+        res = super().eventFilter(obj, event)
+        if event.type() in (QEvent.Show, QEvent.Resize):
+            if self.line_edit and self.line_edit.isVisible():
+                pos = self.line_edit.mapToGlobal(QPoint(0, self.line_edit.height() + 2))
+                obj.move(pos)
+        return res
 
 
 class HintLineEdit(QLineEdit):
@@ -141,13 +161,16 @@ class InquiryGeneratorPanel(QWidget):
     generation_requested = Signal()
     debtor_parsed = Signal(dict)
 
-    def __init__(self, settings, parent=None):
+    def __init__(self, settings, db_manager: DatabaseManager = None, parent=None):
         super().__init__(parent)
         self.settings = settings
+        self.db_manager = db_manager or DatabaseManager()
         self.theme = settings.theme
         self.parser_worker = None
         self.creditor_rows: list[CreditorRowWidget] = []
+        self._debtors_cache = []
         self._init_ui()
+        self.refresh_debtors_list()
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -170,24 +193,22 @@ class InquiryGeneratorPanel(QWidget):
         card1_title.setObjectName("cardTitle")
         left_layout.addWidget(card1_title)
 
-        # Drop Zone
-        self.drop_area = DropArea(self)
-        self.drop_area.file_dropped.connect(self._load_file)
-        self.drop_area.clicked.connect(self._open_file_dialog)
-        left_layout.addWidget(self.drop_area)
+        # Выбор должника из картотеки (выпадающий список)
+        debtor_select_layout = QVBoxLayout()
+        debtor_select_layout.setSpacing(6)
 
-        # Parsing Progress Bar (hidden by default)
-        self.parse_progress_bar = QProgressBar()
-        self.parse_progress_bar.setObjectName("parsingProgressBar")
-        self.parse_progress_bar.setFixedHeight(8)
-        self.parse_progress_bar.setTextVisible(False)
-        self.parse_progress_bar.hide()
-        left_layout.addWidget(self.parse_progress_bar)
+        lbl_select_debtor = QLabel("Выбор должника из базы:")
+        lbl_select_debtor.setStyleSheet("font-size: 12px; font-weight: 600; color: #475569;")
+        debtor_select_layout.addWidget(lbl_select_debtor)
 
-        self.parse_status_lbl = QLabel("")
-        self.parse_status_lbl.setObjectName("parsingStatusLabel")
-        self.parse_status_lbl.hide()
-        left_layout.addWidget(self.parse_status_lbl)
+        self.debtor_combo = QComboBox(self)
+        self.debtor_combo.setObjectName("debtorSelectorCombo")
+        self.debtor_combo.setEditable(False)
+        self.debtor_combo.setFixedHeight(40)
+        self.debtor_combo.currentIndexChanged.connect(self._on_debtor_combo_selected)
+        debtor_select_layout.addWidget(self.debtor_combo)
+
+        left_layout.addLayout(debtor_select_layout)
 
         # Form Scroll Area
         scroll = QScrollArea()
@@ -374,11 +395,8 @@ class InquiryGeneratorPanel(QWidget):
         
         row_mgr = QHBoxLayout()
         self.edit_mgr_fio = self._make_input("ФИО управляющего", "ФИО арбитражного / финансового управляющего")
-        self.edit_mgr_fio.setText("Гусарова Ксения Андреевна")
         self.edit_mgr_phone = self._make_input("Телефон", "Контактный телефон финансового управляющего")
-        self.edit_mgr_phone.setText("+7 (913) 989-01-63")
         self.edit_mgr_email = self._make_input("Эл. почта", "Электронная почта финансового управляющего")
-        self.edit_mgr_email.setText("kseniya_gusarova@mail.ru")
         row_mgr.addWidget(self.edit_mgr_fio, stretch=3)
         row_mgr.addWidget(self.edit_mgr_phone, stretch=2)
         row_mgr.addWidget(self.edit_mgr_email, stretch=2)
@@ -386,27 +404,22 @@ class InquiryGeneratorPanel(QWidget):
 
         row_mgr_ids = QHBoxLayout()
         self.edit_mgr_inn = self._make_input("ИНН управляющего", "ИНН финансового управляющего")
-        self.edit_mgr_inn.setText("380470431942")
         self.edit_mgr_snils = self._make_input("СНИЛС управляющего", "СНИЛС финансового управляющего")
-        self.edit_mgr_snils.setText("136-556-599 95")
         self.edit_mgr_addr = self._make_input("Почтовый адрес для корреспонденции", "Почтовый адрес для направления корреспонденции")
-        self.edit_mgr_addr.setText("630007, г. Новосибирск, а/я 1")
         row_mgr_ids.addWidget(self.edit_mgr_inn)
         row_mgr_ids.addWidget(self.edit_mgr_snils)
         row_mgr_ids.addWidget(self.edit_mgr_addr)
         form_layout.addLayout(row_mgr_ids)
 
+        self._fill_default_manager_values()
+
         scroll.setWidget(form_widget)
         left_layout.addWidget(scroll, stretch=1)
 
-        # Bottom toolbar: ONLY "Добавить" and "Очистить"
+        # Bottom toolbar: ONLY "Очистить"
         left_btn_bar = QHBoxLayout()
         left_btn_bar.setSpacing(8)
         left_btn_bar.setContentsMargins(0, 4, 0, 0)
-
-        self.btn_add = QPushButton("Добавить")
-        self.btn_add.clicked.connect(self._open_file_dialog)
-        left_btn_bar.addWidget(self.btn_add)
 
         left_btn_bar.addStretch()
 
@@ -509,7 +522,41 @@ class InquiryGeneratorPanel(QWidget):
         return lbl
 
     def _make_input(self, placeholder: str, tooltip: str = "") -> HintLineEdit:
-        return HintLineEdit(placeholder, tooltip or placeholder, self)
+        line_edit = HintLineEdit(placeholder, tooltip or placeholder, self)
+        if "адрес" in placeholder.lower():
+            self._setup_address_completer(line_edit)
+        return line_edit
+
+    def _setup_address_completer(self, line_edit: QLineEdit):
+        """Sets up address auto-completion with region and city prefixes from assets/regions.json."""
+        if not hasattr(self, "_cached_address_prefixes"):
+            prefixes = []
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            json_path = os.path.join(base_dir, "assets", "regions.json")
+            if os.path.exists(json_path):
+                try:
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        regions_data = json.load(f)
+                    for reg_id, reg in regions_data.items():
+                        for city in reg.get("cities", []):
+                            pref = city.get("prefix", "").strip()
+                            if pref and pref not in prefixes:
+                                prefixes.append(pref)
+                except Exception:
+                    pass
+            self._cached_address_prefixes = prefixes
+
+        if self._cached_address_prefixes:
+            completer = QCompleter(self._cached_address_prefixes, line_edit)
+            completer.setCaseSensitivity(Qt.CaseInsensitive)
+            completer.setFilterMode(Qt.MatchContains)
+            completer.setMaxVisibleItems(8)
+            popup = completer.popup()
+            if popup:
+                popup.setObjectName("completerPopup")
+                popup_filter = _CompleterPopupFilter(line_edit, popup)
+                popup.installEventFilter(popup_filter)
+            line_edit.setCompleter(completer)
 
     def _on_debtor_name_changed(self, text: str):
         nomn = to_nomn_fio(text.strip())
@@ -563,50 +610,75 @@ class InquiryGeneratorPanel(QWidget):
         self.agencies_count_lbl.setText(f"{sel_count} из {total} выбрано")
         self.btn_generate.setEnabled(sel_count > 0)
 
-    def _open_file_dialog(self):
-        fpath, _ = QFileDialog.getOpenFileName(
-            self,
-            "Выберите решение или определение суда",
-            "",
-            "Судебные акты (*.pdf *.docx *.doc);;PDF файлы (*.pdf);;Word документы (*.docx *.doc)"
-        )
-        if fpath:
-            self._load_file(fpath)
+    def refresh_debtors_list(self):
+        """Refreshes debtor records from SQLite database into debtor_combo."""
+        if not hasattr(self, "debtor_combo"):
+            return
+        self._debtors_cache = self.db_manager.get_debtors()
+        self.debtor_combo.blockSignals(True)
+        self.debtor_combo.clear()
+        self.debtor_combo.addItem("— Выберите должника из списка —", userData=None)
 
-    def _load_file(self, fpath: str):
-        self.drop_area.label.setText(f"Загружен файл:\n{os.path.basename(fpath)}")
-        self.parse_progress_bar.show()
-        self.parse_progress_bar.setRange(0, 0)
-        self.parse_status_lbl.show()
-        self.parse_status_lbl.setText("Анализ судебного акта...")
+        for d in self._debtors_cache:
+            name = d.get("full_name", "").strip()
+            case = d.get("case_number", "").strip()
+            display_text = f"{name} (Дело: {case})" if case else name
+            self.debtor_combo.addItem(display_text, userData=d["id"])
 
-        self.parser_worker = CourtParserWorker(fpath)
-        self.parser_worker.parsed.connect(self._on_parse_success)
-        self.parser_worker.failed.connect(self._on_parse_failed)
-        self.parser_worker.start()
+        self.debtor_combo.setCurrentIndex(0)
+        self.debtor_combo.blockSignals(False)
 
-    def _on_parse_success(self, data: dict):
-        self.parse_progress_bar.hide()
-        self.parse_status_lbl.hide()
+    def _on_debtor_combo_selected(self, index: int):
+        if index <= 0:
+            return
+        debtor_id = self.debtor_combo.currentData()
+        if not debtor_id:
+            return
+        debtor = self.db_manager.get_debtor_by_id(debtor_id)
+        if debtor:
+            self.load_debtor(debtor)
 
+    def load_debtor(self, debtor: dict):
+        """Populates all Module 2 fields with data from a debtor dictionary."""
+        raw = debtor.get("parsed_raw") or {}
+        merged = dict(debtor)
+        merged.update(raw)
+        self.set_data_dict(merged)
+
+    def set_data_dict(self, data: dict):
+        """Sets form fields from dictionary."""
         self.edit_case_no.setText(data.get("case_number", ""))
         self.edit_dec_date.setText(data.get("decision_date", ""))
         self.edit_petition_date.setText(data.get("petition_date", ""))
         self.edit_court_name.setText(data.get("court_name", ""))
 
-        self.edit_debtor_fio.setText(data.get("debtor_fio", ""))
+        self.edit_debtor_fio.setText(data.get("debtor_fio") or data.get("full_name", ""))
         self.edit_debtor_fio_gen.setText(data.get("debtor_fio_gen", ""))
         self.edit_debtor_birth.setText(data.get("debtor_birth_date", ""))
         self.edit_debtor_place.setText(data.get("debtor_birth_place", ""))
-        self.edit_debtor_addr.setText(data.get("debtor_address", ""))
-        self.edit_debtor_snils.setText(data.get("debtor_snils", ""))
-        self.edit_debtor_inn.setText(data.get("debtor_inn", ""))
+        self.edit_debtor_addr.setText(data.get("debtor_address") or data.get("address", ""))
+        self.edit_debtor_snils.setText(data.get("debtor_snils") or data.get("snils", ""))
+        self.edit_debtor_inn.setText(data.get("debtor_inn") or data.get("inn", ""))
 
         self.edit_pass_series.setText(data.get("debtor_passport_series", ""))
         self.edit_pass_num.setText(data.get("debtor_passport_number", ""))
         self.edit_pass_issued_by.setText(data.get("debtor_passport_issued_by", ""))
         self.edit_pass_date.setText(data.get("debtor_passport_date", ""))
         self.edit_pass_code.setText(data.get("debtor_passport_code", ""))
+
+        # Employer
+        emp = bool(data.get("employer_employed", False))
+        self.cb_employed.setChecked(emp)
+        self._on_employed_toggled(emp)
+        self.edit_emp_name.setText(data.get("employer_name", ""))
+        self.edit_emp_addr.setText(data.get("employer_address", ""))
+        self.edit_emp_inn.setText(data.get("employer_inn", ""))
+
+        # Creditors
+        for row in list(self.creditor_rows):
+            self._remove_creditor_row(row)
+        for cred in data.get("creditors", []):
+            self._add_creditor_row(cred.get("name", ""), cred.get("address", ""), cred.get("inn", ""))
 
         # Spouse
         status = data.get("spouse_status", "not_married")
@@ -629,28 +701,25 @@ class InquiryGeneratorPanel(QWidget):
         self.edit_spouse_inn.setText(data.get("spouse_inn", ""))
         self.edit_marriage_date.setText(data.get("marriage_date", ""))
 
-        # Signal for SQLite database debtor card creation
-        pass_series = data.get("debtor_passport_series", "").strip()
-        pass_num = data.get("debtor_passport_number", "").strip()
-        passport_data = f"{pass_series} {pass_num}".strip()
-        debtor_info = {
-            "full_name": data.get("debtor_fio", "").strip(),
-            "case_number": data.get("case_number", "").strip(),
-            "snils": data.get("debtor_snils", "").strip(),
-            "inn": data.get("debtor_inn", "").strip(),
-            "passport_data": passport_data,
-            "address": data.get("debtor_address", "").strip()
-        }
-        if debtor_info["full_name"]:
-            self.debtor_parsed.emit(debtor_info)
-
-    def _on_parse_failed(self, err: str):
-        self.parse_progress_bar.hide()
-        self.parse_status_lbl.hide()
-        QMessageBox.warning(self, "Ошибка разбора файла", f"Не удалось автоматически извлечь данные:\n{err}\n\nВы можете заполнить реквизиты вручную.")
+        # Manager
+        if data.get("manager_fio"):
+            self.edit_mgr_fio.setText(data.get("manager_fio", ""))
+        if data.get("manager_phone"):
+            self.edit_mgr_phone.setText(data.get("manager_phone", ""))
+        if data.get("manager_email"):
+            self.edit_mgr_email.setText(data.get("manager_email", ""))
+        if data.get("manager_inn"):
+            self.edit_mgr_inn.setText(data.get("manager_inn", ""))
+        if data.get("manager_snils"):
+            self.edit_mgr_snils.setText(data.get("manager_snils", ""))
+        if data.get("manager_corr_address"):
+            self.edit_mgr_addr.setText(data.get("manager_corr_address", ""))
 
     def clear_fields(self):
-        self.drop_area.label.setText("Перетащите решение или определение суда в формате PDF или Word\nили нажмите для выбора файла")
+        if hasattr(self, "debtor_combo"):
+            self.debtor_combo.blockSignals(True)
+            self.debtor_combo.setCurrentIndex(0)
+            self.debtor_combo.blockSignals(False)
         self.edit_case_no.clear()
         self.edit_dec_date.clear()
         self.edit_petition_date.clear()
@@ -689,18 +758,16 @@ class InquiryGeneratorPanel(QWidget):
         self.edit_spouse_inn.clear()
         self.edit_marriage_date.clear()
 
-        if not self.edit_mgr_fio.text():
-            self.edit_mgr_fio.setText("Гусарова Ксения Андреевна")
-        if not self.edit_mgr_inn.text():
-            self.edit_mgr_inn.setText("380470431942")
-        if not self.edit_mgr_snils.text():
-            self.edit_mgr_snils.setText("136-556-599 95")
-        if not self.edit_mgr_addr.text():
-            self.edit_mgr_addr.setText("630007, г. Новосибирск, а/я 1")
-        if not self.edit_mgr_phone.text():
-            self.edit_mgr_phone.setText("+7 (913) 989-01-63")
-        if not self.edit_mgr_email.text():
-            self.edit_mgr_email.setText("kseniya_gusarova@mail.ru")
+        self._fill_default_manager_values()
+
+    def _fill_default_manager_values(self):
+        """Fills financial manager fields with user default values from settings."""
+        self.edit_mgr_fio.setText(self.settings.manager_fio)
+        self.edit_mgr_phone.setText(self.settings.manager_phone)
+        self.edit_mgr_email.setText(self.settings.manager_email)
+        self.edit_mgr_inn.setText(self.settings.manager_inn)
+        self.edit_mgr_snils.setText(self.settings.manager_snils)
+        self.edit_mgr_addr.setText(self.settings.manager_corr_address)
 
     def get_data_dict(self) -> dict:
         spouse_st = "not_married"

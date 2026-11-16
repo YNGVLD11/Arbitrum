@@ -17,7 +17,7 @@ class InquirySuccessDialog(QDialog):
         self.output_dir = output_dir
         self.inquiries_count = inquiries_count or files_count
 
-        self.setWindowTitle("Запросы сформированы - Арбитум")
+        self.setWindowTitle("Запросы сформированы - Арбитрум")
         self.setWindowIcon(get_app_icon())
         self.setFixedSize(500, 240)
         self.setModal(True)

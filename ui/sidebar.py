@@ -48,12 +48,12 @@ class Sidebar(QFrame):
         layout.setContentsMargins(8, 16, 8, 16)
         layout.setSpacing(8)
 
-        # Header: App Title "Арбитум" (without subtitle)
+        # Header: App Title "Арбитрум" (without subtitle)
         header_layout = QVBoxLayout()
         header_layout.setSpacing(0)
         header_layout.setContentsMargins(2, 0, 2, 8)
 
-        title_lbl = QLabel("Арбитум")
+        title_lbl = QLabel("Арбитрум")
         title_lbl.setObjectName("sidebarTitle")
         title_font = QFont("Segoe UI", 16, QFont.Bold)
         title_lbl.setFont(title_font)
@@ -78,6 +78,10 @@ class Sidebar(QFrame):
         self.btn_inquiry = NavButton("Генератор запросов", 1, self)
         self.btn_inquiry.clicked.connect(lambda: self._on_btn_clicked(1))
         layout.addWidget(self.btn_inquiry)
+
+        self.btn_kartoteka = NavButton("Картотека", 2, self)
+        self.btn_kartoteka.clicked.connect(lambda: self._on_btn_clicked(2))
+        layout.addWidget(self.btn_kartoteka)
 
         layout.addStretch()
 
@@ -104,6 +108,8 @@ class Sidebar(QFrame):
     def _update_nav_selection(self):
         self.btn_report.set_active(self.current_page == 0)
         self.btn_inquiry.set_active(self.current_page == 1)
+        if hasattr(self, "btn_kartoteka"):
+            self.btn_kartoteka.set_active(self.current_page == 2)
 
     def set_theme(self, theme: str):
         self.theme = theme

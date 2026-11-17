@@ -10,6 +10,9 @@ from PySide6.QtWidgets import (
 from ui.themes import (
     THEME_LIGHT, THEME_FEMININE, THEME_CAPPUCCINO, THEME_LAVENDER, get_app_icon
 )
+from core.updater import (
+    CURRENT_VERSION, CheckUpdateThread, DownloadUpdateThread, restart_and_replace
+)
 
 
 def get_default_downloads_dir() -> str:
@@ -210,16 +213,17 @@ class SettingsDialog(QDialog):
         sidebar_layout.setContentsMargins(12, 16, 12, 16)
         sidebar_layout.setSpacing(6)
 
-        title_lbl = QLabel("⚙️ Настройки")
+        title_lbl = QLabel("Настройки")
         title_lbl.setObjectName("headerTitle")
         title_lbl.setStyleSheet("font-size: 15px; font-weight: 700; padding-bottom: 8px;")
         sidebar_layout.addWidget(title_lbl)
 
         self.nav_btns = []
         tab_names = [
-            ("📁 Основные / Отчёт", 0),
-            ("👤 Реквизиты АУ", 1),
-            ("🏛️ Регионы и ведомства", 2)
+            ("Основные / Отчёт", 0),
+            ("Реквизиты АУ", 1),
+            ("Регионы и ведомства", 2),
+            ("Обновления", 3)
         ]
         for name, idx in tab_names:
             btn = QPushButton(name, self.sidebar_frame)
@@ -246,6 +250,9 @@ class SettingsDialog(QDialog):
 
         # Page 2: Regions & Agencies
         self.pages_stack.addWidget(self._create_regions_page())
+
+        # Page 3: Updates
+        self.pages_stack.addWidget(self._create_updates_page())
 
         content_layout.addWidget(self.pages_stack, stretch=1)
         root_layout.addLayout(content_layout, stretch=1)
@@ -731,6 +738,151 @@ class SettingsDialog(QDialog):
         )
         if d:
             self.dir_edit.setText(os.path.normpath(d))
+
+    # =========================================================================
+    # Page 3: Обновления программы
+    # =========================================================================
+    def _create_updates_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(14)
+
+        upd_group = QGroupBox("Обновление системы Арбитрум")
+        g_layout = QVBoxLayout(upd_group)
+        g_layout.setContentsMargins(16, 14, 16, 14)
+        g_layout.setSpacing(10)
+
+        # Version info
+        row_ver = QHBoxLayout()
+        lbl_v_title = QLabel("Текущая версия:")
+        lbl_v_title.setStyleSheet("font-size: 13px; color: #64748B;")
+        self.lbl_current_ver = QLabel(f"<b>{CURRENT_VERSION}</b>")
+        self.lbl_current_ver.setStyleSheet("font-size: 13px; color: #0F172A;")
+        row_ver.addWidget(lbl_v_title)
+        row_ver.addWidget(self.lbl_current_ver)
+        row_ver.addStretch()
+        g_layout.addLayout(row_ver)
+
+        # Status Label
+        self.lbl_update_status = QLabel("Нажмите кнопку ниже для проверки наличия новой версии.")
+        self.lbl_update_status.setWordWrap(True)
+        self.lbl_update_status.setStyleSheet("color: #475569; font-size: 12px; padding: 4px 0;")
+        g_layout.addWidget(self.lbl_update_status)
+
+        # Check button
+        btn_row = QHBoxLayout()
+        self.btn_check_update = QPushButton("Проверить обновления", upd_group)
+        self.btn_check_update.setObjectName("secondaryButton")
+        self.btn_check_update.setCursor(Qt.PointingHandCursor)
+        self.btn_check_update.setFixedHeight(34)
+        self.btn_check_update.clicked.connect(self._start_check_update)
+        btn_row.addWidget(self.btn_check_update)
+
+        self.btn_apply_update = QPushButton("Обновить и перезапустить", upd_group)
+        self.btn_apply_update.setObjectName("mainBuildButton")
+        self.btn_apply_update.setCursor(Qt.PointingHandCursor)
+        self.btn_apply_update.setFixedHeight(34)
+        self.btn_apply_update.setVisible(False)
+        self.btn_apply_update.clicked.connect(self._start_download_update)
+        btn_row.addWidget(self.btn_apply_update)
+
+        btn_row.addStretch()
+        g_layout.addLayout(btn_row)
+
+        # Release notes text
+        self.notes_box = QTextEdit()
+        self.notes_box.setReadOnly(True)
+        self.notes_box.setPlaceholderText("Описание изменений нового релиза появится здесь...")
+        self.notes_box.setMaximumHeight(160)
+        self.notes_box.setVisible(False)
+        g_layout.addWidget(self.notes_box)
+
+        layout.addWidget(upd_group)
+        layout.addStretch()
+
+        self._update_download_url = ""
+        self._download_temp_file = ""
+        return page
+
+    def _start_check_update(self):
+        self.btn_check_update.setEnabled(False)
+        self.btn_check_update.setText("Проверка...")
+        self.lbl_update_status.setText("Связываемся с сервером обновлений...")
+        self.lbl_update_status.setStyleSheet("color: #2563EB; font-size: 12px;")
+        self.btn_apply_update.setVisible(False)
+        self.notes_box.setVisible(False)
+
+        self.check_thread = CheckUpdateThread()
+        self.check_thread.check_finished.connect(self._on_check_update_finished)
+        self.check_thread.check_failed.connect(self._on_check_update_failed)
+        self.check_thread.start()
+
+    def _on_check_update_finished(self, has_update: bool, new_ver: str, notes: str, download_url: str):
+        self.btn_check_update.setEnabled(True)
+        self.btn_check_update.setText("Проверить обновления")
+
+        if has_update:
+            self._update_download_url = download_url
+            self.lbl_update_status.setText(f"Доступна новая версия: <b>{new_ver}</b>!")
+            self.lbl_update_status.setStyleSheet("color: #16A34A; font-size: 13px;")
+            self.notes_box.setPlainText(notes)
+            self.notes_box.setVisible(True)
+            if download_url:
+                self.btn_apply_update.setVisible(True)
+                self.btn_apply_update.setText(f"Скачать и обновить до {new_ver}")
+            else:
+                self.lbl_update_status.setText(f"Доступна версия {new_ver}, но установочный файл ещё загружается разработчиком.")
+        else:
+            self.lbl_update_status.setText("У вас установлена самая последняя версия приложения.")
+            self.lbl_update_status.setStyleSheet("color: #16A34A; font-size: 12px;")
+
+    def _on_check_update_failed(self, error_msg: str):
+        self.btn_check_update.setEnabled(True)
+        self.btn_check_update.setText("Проверить обновления")
+        self.lbl_update_status.setText(f"Не удалось проверить обновления: {error_msg}")
+        self.lbl_update_status.setStyleSheet("color: #DC2626; font-size: 12px;")
+
+    def _start_download_update(self):
+        if not self._update_download_url:
+            QMessageBox.warning(self, "Ошибка", "Ссылка для скачивания обновления не найдена.")
+            return
+
+        self.btn_apply_update.setEnabled(False)
+        self.btn_check_update.setEnabled(False)
+        self.lbl_update_status.setText("Загрузка обновления (0%)...")
+        self.lbl_update_status.setStyleSheet("color: #2563EB; font-size: 12px;")
+
+        self.dl_thread = DownloadUpdateThread(self._update_download_url)
+        self.dl_thread.progress.connect(self._on_download_progress)
+        self.dl_thread.download_finished.connect(self._on_download_finished)
+        self.dl_thread.download_failed.connect(self._on_download_failed)
+        self.dl_thread.start()
+
+    def _on_download_progress(self, percent: int):
+        self.lbl_update_status.setText(f"Загрузка обновления ({percent}%)...")
+
+    def _on_download_finished(self, temp_path: str):
+        self.lbl_update_status.setText("Обновление скачано! Перезапуск приложения...")
+        self.lbl_update_status.setStyleSheet("color: #16A34A; font-size: 12px; font-weight: bold;")
+        try:
+            restart_and_replace(temp_path)
+        except RuntimeError as e:
+            QMessageBox.information(
+                self,
+                "Обновление загружено",
+                f"Файл обновления успешно сохранен:\n{temp_path}\n\n"
+                "Так как программа запущена в режиме разработки (из исходного кода), "
+                "автоматическая замена .exe пропущена."
+            )
+            self.btn_apply_update.setEnabled(True)
+            self.btn_check_update.setEnabled(True)
+
+    def _on_download_failed(self, err: str):
+        self.btn_apply_update.setEnabled(True)
+        self.btn_check_update.setEnabled(True)
+        self.lbl_update_status.setText(f"Ошибка загрузки обновления: {err}")
+        self.lbl_update_status.setStyleSheet("color: #DC2626; font-size: 12px;")
 
     def _save_values(self):
         # 1. General & Report

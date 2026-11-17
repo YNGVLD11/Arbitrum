@@ -223,6 +223,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "inquiry_panel"):
             self.inquiry_panel.set_theme(theme_name)
         if hasattr(self, "kartoteka_panel"):
+            self.kartoteka_panel.set_theme(theme_name)
             self.kartoteka_panel.refresh_table()
         self.update()
 

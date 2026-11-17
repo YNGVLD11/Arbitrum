@@ -14,8 +14,19 @@ except Exception:
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QFontDatabase, QFont
 from ui.themes import get_app_icon
 from ui.main_window import MainWindow
+
+
+def load_application_fonts():
+    """Загружает встроенные шрифты Inter, если они доступны."""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    fonts_dir = os.path.join(base_dir, "assets", "fonts")
+    if os.path.exists(fonts_dir):
+        for font_file in os.listdir(fonts_dir):
+            if font_file.lower().endswith((".ttf", ".otf")):
+                QFontDatabase.addApplicationFont(os.path.join(fonts_dir, font_file))
 
 
 def main():
@@ -28,6 +39,13 @@ def main():
     app.setApplicationName("ArbitrReportBuilder")
     app.setApplicationDisplayName("Арбитрум")
     app.setOrganizationName("ArbitrTools")
+
+    # Load custom fonts (Inter)
+    load_application_fonts()
+    # Set default application font to Inter if available, fallback to Segoe UI
+    default_font = QFont("Inter")
+    default_font.setStyleHint(QFont.SansSerif)
+    app.setFont(default_font)
 
     # Set application icon (inherited by all windows and taskbar)
     icon = get_app_icon()

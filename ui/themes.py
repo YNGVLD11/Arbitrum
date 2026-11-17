@@ -221,19 +221,19 @@ LIGHT_QSS = f"""
 QMainWindow {{
     background: transparent;
     color: #0F172A;
-    font-family: "Segoe UI", Arial, sans-serif;
+    font-family: "Inter", "Segoe UI", Arial, sans-serif;
     font-size: 13px;
 }}
 
 QDialog {{
     background-color: #F0F9FF;
     color: #0F172A;
-    font-family: "Segoe UI", Arial, sans-serif;
+    font-family: "Inter", "Segoe UI", Arial, sans-serif;
     font-size: 13px;
 }}
 
 QWidget {{
-    font-family: "Segoe UI", Arial, sans-serif;
+    font-family: "Inter", "Segoe UI", Arial, sans-serif;
     font-size: 13px;
     color: #0F172A;
 }}
@@ -952,19 +952,19 @@ FEMININE_QSS = f"""
 QMainWindow {{
     background: transparent;
     color: #38272F;
-    font-family: "Segoe UI", Arial, sans-serif;
+    font-family: "Inter", "Segoe UI", Arial, sans-serif;
     font-size: 13px;
 }}
 
 QDialog {{
     background-color: #FFF0F5;
     color: #38272F;
-    font-family: "Segoe UI", Arial, sans-serif;
+    font-family: "Inter", "Segoe UI", Arial, sans-serif;
     font-size: 13px;
 }}
 
 QWidget {{
-    font-family: "Segoe UI", Arial, sans-serif;
+    font-family: "Inter", "Segoe UI", Arial, sans-serif;
     font-size: 13px;
     color: #38272F;
 }}
@@ -1689,19 +1689,19 @@ CAPPUCCINO_QSS = f"""
 QMainWindow {{
     background: transparent;
     color: #2D241E;
-    font-family: "Segoe UI", Arial, sans-serif;
+    font-family: "Inter", "Segoe UI", Arial, sans-serif;
     font-size: 13px;
 }}
 
 QDialog {{
     background-color: #F7F1EB;
     color: #2D241E;
-    font-family: "Segoe UI", Arial, sans-serif;
+    font-family: "Inter", "Segoe UI", Arial, sans-serif;
     font-size: 13px;
 }}
 
 QWidget {{
-    font-family: "Segoe UI", Arial, sans-serif;
+    font-family: "Inter", "Segoe UI", Arial, sans-serif;
     font-size: 13px;
     color: #2D241E;
 }}
@@ -2418,19 +2418,19 @@ LAVENDER_QSS = f"""
 QMainWindow {{
     background: transparent;
     color: #1E1B4B;
-    font-family: "Segoe UI", Arial, sans-serif;
+    font-family: "Inter", "Segoe UI", Arial, sans-serif;
     font-size: 13px;
 }}
 
 QDialog {{
     background-color: #F5F3FF;
     color: #1E1B4B;
-    font-family: "Segoe UI", Arial, sans-serif;
+    font-family: "Inter", "Segoe UI", Arial, sans-serif;
     font-size: 13px;
 }}
 
 QWidget {{
-    font-family: "Segoe UI", Arial, sans-serif;
+    font-family: "Inter", "Segoe UI", Arial, sans-serif;
     font-size: 13px;
     color: #1E1B4B;
 }}

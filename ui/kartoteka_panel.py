@@ -3,14 +3,65 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QFrame,
-    QFileDialog, QMessageBox, QScrollArea, QSplitter
+    QFileDialog, QMessageBox, QScrollArea, QSplitter,
+    QStackedWidget, QApplication, QCheckBox, QTextEdit
 )
+from PySide6.QtGui import QIcon
 from core.database import DatabaseManager
 from core.court_parser import parse_court_decision
+from core.deadlines import calculate_deadlines
 from core.debtor_exporter import (
     export_debtor_to_text, export_all_debtors_to_text, parse_debtor_from_text
 )
+from core.publications_generator import (
+    generate_kommersant_doc, generate_efrsb_doc, generate_consent_doc, format_short_fio
+)
+from ui.inquiry_success_dialog import InquirySuccessDialog
 from ui.debtor_dialog import DebtorEditDialog
+
+THEME_ACTIVE_BTN_COLORS = {
+    "light": "#2563EB",
+    "feminine": "#FF4D6D",
+    "cappuccino": "#8F5E38",
+    "lavender": "#7C3AED",
+}
+
+THEME_SELECTION_BG_COLORS = {
+    "light": "#EFF6FF",
+    "feminine": "#FFF0F3",
+    "cappuccino": "#F2E9E1",
+    "lavender": "#EDE9FE",
+}
+
+THEME_SELECTION_BORDER_COLORS = {
+    "light": "#BFDBFE",
+    "feminine": "#FFCCD5",
+    "cappuccino": "#D7C7B7",
+    "lavender": "#DDD6FE",
+}
+
+FIRST_CONTACT_DOCS = [
+    ("pass", "Паспорт", True),
+    ("inn", "ИНН", True),
+    ("snils", "СНИЛС", True),
+    ("marriage_kids", "Свидетельство о браке, о рождении детей", True),
+    ("deals", "Документы по сделкам", True),
+    ("creditors", "Сведения о кредиторах", True),
+    ("bank_stmts", "Выписки по текущим счетам", True),
+    ("job", "Сведения о трудовой деятельности", True),
+    ("gosuslugi", "Логин и пароль от госуслуг", True),
+]
+
+COURT_ORDER_DOCS = [
+    ("pass", "Паспорт РФ", True),
+    ("snils_inn", "СНИЛС и ИНН", True),
+    ("marriage", "Свидетельство о браке / разводе", True),
+    ("ndfl", "Справки 2-НДФЛ", True),
+    ("work_book", "Трудовая книжка", True),
+    ("bank_stmts", "Выписки по счетам", False),
+    ("credit_agrs", "Кредитные договоры", False),
+    ("property", "Документы на имущество", False),
+]
 
 
 class KartotekaDropArea(QFrame):
@@ -70,14 +121,6 @@ class KartotekaDropArea(QFrame):
 
 
 class KartotekaPanel(QWidget):
-    """
-    Модуль 3: Картотека должников.
-    - Таблица: ID, ФИО, Номер дела, Адрес прописки.
-    - Правая колонка: подробная информация о выбранном должнике списком.
-    - Модалка редактирования/создания (двойной клик или кнопка).
-    - Загрузка судебного акта (драгндроп или кнопка) с открытием модалки.
-    - Экспорт/импорт в текстовые файлы 'поле: значение'.
-    """
     debtor_selected_for_inquiry = Signal(dict)
     debtors_changed = Signal()
 
@@ -87,9 +130,64 @@ class KartotekaPanel(QWidget):
         self.settings = settings
         self.current_debtors = []
         self.selected_debtor = None
+        self.script_mode = "first"  # "first" или "court"
+
+        self.current_theme = "light"
+        if hasattr(self.settings, "theme"):
+            self.current_theme = self.settings.theme or "light"
 
         self._init_ui()
         self.refresh_table()
+
+    def set_theme(self, theme_name: str):
+        self.current_theme = theme_name
+        self._update_tab_button_styles()
+        self._update_mode_button_styles()
+        self._update_script_container_style()
+
+    def _update_mode_button_styles(self):
+        if not hasattr(self, "btn_mode_first"):
+            return
+        active_color = THEME_ACTIVE_BTN_COLORS.get(self.current_theme, "#2563EB")
+        if self.script_mode == "first":
+            self.btn_mode_first.setStyleSheet(
+                f"QPushButton {{ background-color: {active_color}; color: #FFFFFF; font-weight: 700; font-size: 11px; border-radius: 5px; border: none; padding: 0 8px; }}"
+            )
+            self.btn_mode_court.setStyleSheet(
+                "QPushButton { background-color: #F1F5F9; color: #475569; font-weight: 600; font-size: 11px; border-radius: 5px; border: 1px solid #CBD5E1; padding: 0 8px; } "
+                "QPushButton:hover { background-color: #E2E8F0; }"
+            )
+        else:
+            self.btn_mode_first.setStyleSheet(
+                "QPushButton { background-color: #F1F5F9; color: #475569; font-weight: 600; font-size: 11px; border-radius: 5px; border: 1px solid #CBD5E1; padding: 0 8px; } "
+                "QPushButton:hover { background-color: #E2E8F0; }"
+            )
+            self.btn_mode_court.setStyleSheet(
+                f"QPushButton {{ background-color: {active_color}; color: #FFFFFF; font-weight: 700; font-size: 11px; border-radius: 5px; border: none; padding: 0 8px; }}"
+            )
+
+    def _update_script_container_style(self):
+        bg = THEME_SELECTION_BG_COLORS.get(self.current_theme, "#EFF6FF")
+        border = THEME_SELECTION_BORDER_COLORS.get(self.current_theme, "#BFDBFE")
+        if hasattr(self, "script_container"):
+            self.script_container.setStyleSheet(
+                f"QFrame {{ background-color: {bg}; border: 1px solid {border}; border-radius: 8px; }}"
+            )
+
+    def _update_tab_button_styles(self):
+        active_color = THEME_ACTIVE_BTN_COLORS.get(self.current_theme, "#2563EB")
+        idx = self.right_stack.currentIndex()
+        tabs = [self.btn_tab_props, self.btn_tab_deadlines, self.btn_tab_script]
+
+        for i, btn in enumerate(tabs):
+            if i == idx:
+                btn.setStyleSheet(
+                    f"background-color: {active_color}; color: #FFFFFF; font-weight: 700; font-size: 12px; border-radius: 6px; padding: 0 10px;"
+                )
+            else:
+                btn.setStyleSheet(
+                    "background-color: #E2E8F0; color: #475569; font-weight: 600; font-size: 12px; border-radius: 6px; padding: 0 10px;"
+                )
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -108,7 +206,8 @@ class KartotekaPanel(QWidget):
         btn_col.setSpacing(6)
 
         self.btn_add_manual = QPushButton("+ Добавить должника вручную", self)
-        self.btn_add_manual.setObjectName("mainBuildButton")
+        self.btn_add_manual.setObjectName("primaryButton")
+        self.btn_add_manual.setFixedHeight(34)
         self.btn_add_manual.setCursor(Qt.PointingHandCursor)
         self.btn_add_manual.clicked.connect(self._on_add_manual)
         btn_col.addWidget(self.btn_add_manual)
@@ -117,11 +216,13 @@ class KartotekaPanel(QWidget):
         exp_imp_layout.setSpacing(6)
 
         self.btn_import_txt = QPushButton("Импорт из TXT", self)
+        self.btn_import_txt.setFixedHeight(34)
         self.btn_import_txt.setCursor(Qt.PointingHandCursor)
         self.btn_import_txt.clicked.connect(self._import_from_text_file)
         exp_imp_layout.addWidget(self.btn_import_txt)
 
         self.btn_export_txt = QPushButton("Экспорт", self)
+        self.btn_export_txt.setFixedHeight(34)
         self.btn_export_txt.setCursor(Qt.PointingHandCursor)
         self.btn_export_txt.clicked.connect(self._on_export_clicked)
         exp_imp_layout.addWidget(self.btn_export_txt)
@@ -137,10 +238,10 @@ class KartotekaPanel(QWidget):
 
         main_layout.addWidget(top_card)
 
-        # Центральный сплиттер: Слева таблица должников, справа подробная карточка
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.setHandleWidth(12)
-        splitter.setChildrenCollapsible(False)
+        # Центральный сплиттер (как в модуле 1):
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.setHandleWidth(16)
+        self.splitter.setChildrenCollapsible(True)
 
         # Левая часть: Таблица
         table_frame = QFrame()
@@ -177,12 +278,14 @@ class KartotekaPanel(QWidget):
 
         tbl_actions = QHBoxLayout()
         self.btn_edit_selected = QPushButton("Редактировать")
+        self.btn_edit_selected.setFixedHeight(34)
         self.btn_edit_selected.clicked.connect(self._edit_selected_debtor)
         self.btn_edit_selected.setEnabled(False)
         tbl_actions.addWidget(self.btn_edit_selected)
 
         self.btn_delete_selected = QPushButton("Удалить")
         self.btn_delete_selected.setObjectName("dangerButton")
+        self.btn_delete_selected.setFixedHeight(34)
         self.btn_delete_selected.clicked.connect(self._delete_selected_debtor)
         self.btn_delete_selected.setEnabled(False)
         tbl_actions.addWidget(self.btn_delete_selected)
@@ -190,18 +293,51 @@ class KartotekaPanel(QWidget):
         tbl_actions.addStretch()
         table_layout.addLayout(tbl_actions)
 
-        splitter.addWidget(table_frame)
+        self.splitter.addWidget(table_frame)
 
-        # Правая часть: Подробная информация списком
+        # Правая часть: Подробная информация с переключателем вкладок (Реквизиты / Сроки / Скрипт)
         info_frame = QFrame()
         info_frame.setObjectName("cardFrame")
         info_layout = QVBoxLayout(info_frame)
         info_layout.setContentsMargins(14, 12, 14, 12)
         info_layout.setSpacing(8)
 
-        lbl_info_title = QLabel("Информация о должнике")
-        lbl_info_title.setObjectName("cardTitle")
-        info_layout.addWidget(lbl_info_title)
+        # Tab buttons bar
+        tabs_header = QHBoxLayout()
+        tabs_header.setSpacing(6)
+
+        self.btn_tab_props = QPushButton("Реквизиты")
+        self.btn_tab_props.setObjectName("secondaryButton")
+        self.btn_tab_props.setCursor(Qt.PointingHandCursor)
+        self.btn_tab_props.setFixedHeight(30)
+        self.btn_tab_props.clicked.connect(lambda: self._switch_right_tab(0))
+        tabs_header.addWidget(self.btn_tab_props)
+
+        self.btn_tab_deadlines = QPushButton("Сроки")
+        self.btn_tab_deadlines.setObjectName("secondaryButton")
+        self.btn_tab_deadlines.setCursor(Qt.PointingHandCursor)
+        self.btn_tab_deadlines.setFixedHeight(30)
+        self.btn_tab_deadlines.clicked.connect(lambda: self._switch_right_tab(1))
+        tabs_header.addWidget(self.btn_tab_deadlines)
+
+        self.btn_tab_script = QPushButton("Скрипт-сообщение")
+        self.btn_tab_script.setObjectName("secondaryButton")
+        self.btn_tab_script.setCursor(Qt.PointingHandCursor)
+        self.btn_tab_script.setFixedHeight(30)
+        self.btn_tab_script.clicked.connect(lambda: self._switch_right_tab(2))
+        tabs_header.addWidget(self.btn_tab_script)
+
+        tabs_header.addStretch()
+        info_layout.addLayout(tabs_header)
+
+        # Right stacked widget
+        self.right_stack = QStackedWidget()
+
+        # Tab 0: Реквизиты
+        tab_props_widget = QWidget()
+        v_props = QVBoxLayout(tab_props_widget)
+        v_props.setContentsMargins(0, 4, 0, 0)
+        v_props.setSpacing(8)
 
         info_scroll = QScrollArea()
         info_scroll.setWidgetResizable(True)
@@ -215,15 +351,135 @@ class KartotekaPanel(QWidget):
         self.info_content.setWordWrap(True)
         self.info_content.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         info_scroll.setWidget(self.info_content)
-        info_layout.addWidget(info_scroll, stretch=1)
+        v_props.addWidget(info_scroll, stretch=1)
 
-        splitter.addWidget(info_frame)
-        splitter.setSizes([620, 380])
+        # Подвал первой вкладки: кнопка формирования заявления-согласия
+        self.btn_gen_consent = QPushButton("Сформировать согласие")
+        self.btn_gen_consent.setObjectName("primaryButton")
+        self.btn_gen_consent.setFixedHeight(34)
+        self.btn_gen_consent.setCursor(Qt.PointingHandCursor)
+        self.btn_gen_consent.setEnabled(False)
+        self.btn_gen_consent.clicked.connect(self._generate_consent_doc)
+        v_props.addWidget(self.btn_gen_consent)
+        v_props.addSpacing(4)
 
-        main_layout.addWidget(splitter, stretch=1)
+        self.right_stack.addWidget(tab_props_widget)
+
+        # Tab 1: Сроки
+        tab_deadlines_widget = QWidget()
+        v_deadlines = QVBoxLayout(tab_deadlines_widget)
+        v_deadlines.setContentsMargins(0, 4, 0, 8)
+        v_deadlines.setSpacing(10)
+
+        dl_scroll = QScrollArea()
+        dl_scroll.setWidgetResizable(True)
+        dl_scroll.setFrameShape(QFrame.NoFrame)
+
+        self.deadlines_content = QLabel("Выберите должника для расчёта контрольных сроков.")
+        self.deadlines_content.setTextFormat(Qt.RichText)
+        self.deadlines_content.setWordWrap(True)
+        self.deadlines_content.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        dl_scroll.setWidget(self.deadlines_content)
+        v_deadlines.addWidget(dl_scroll, stretch=1)
+
+        # Подвал второй вкладки: аккуратная стандартная кнопка генерации с гарантированным отступом
+        self.btn_gen_publications = QPushButton("Сформировать письма в ЕФРСБ и Коммерсантъ")
+        self.btn_gen_publications.setObjectName("primaryButton")
+        self.btn_gen_publications.setFixedHeight(34)
+        self.btn_gen_publications.setCursor(Qt.PointingHandCursor)
+        self.btn_gen_publications.setEnabled(False)
+        self.btn_gen_publications.clicked.connect(self._generate_publications_docs)
+        v_deadlines.addWidget(self.btn_gen_publications)
+        v_deadlines.addSpacing(4)
+
+        self.right_stack.addWidget(tab_deadlines_widget)
+
+        # Tab 2: Скрипт-сообщение
+        tab_script_widget = QWidget()
+        v_script = QVBoxLayout(tab_script_widget)
+        v_script.setContentsMargins(0, 4, 0, 0)
+        v_script.setSpacing(8)
+
+        # Переключатель сценария: Первый контакт / Определение суда
+        mode_layout = QHBoxLayout()
+        mode_layout.setSpacing(6)
+
+        self.btn_mode_first = QPushButton("Первый контакт")
+        self.btn_mode_first.setFixedHeight(28)
+        self.btn_mode_first.setCursor(Qt.PointingHandCursor)
+        self.btn_mode_first.clicked.connect(lambda: self._set_script_mode("first"))
+        mode_layout.addWidget(self.btn_mode_first, stretch=1)
+
+        self.btn_mode_court = QPushButton("Определение суда")
+        self.btn_mode_court.setFixedHeight(28)
+        self.btn_mode_court.setCursor(Qt.PointingHandCursor)
+        self.btn_mode_court.clicked.connect(lambda: self._set_script_mode("court"))
+        mode_layout.addWidget(self.btn_mode_court, stretch=1)
+
+        v_script.addLayout(mode_layout)
+        self._update_mode_button_styles()
+
+        self.cb_grid_layout = QVBoxLayout()
+        self.cb_grid_layout.setSpacing(6)
+        self.script_checkboxes = []
+        v_script.addLayout(self.cb_grid_layout)
+        self._rebuild_script_checkboxes()
+
+        sep_script = QFrame()
+        sep_script.setFrameShape(QFrame.HLine)
+        sep_script.setStyleSheet("background-color: #E5E7EB; max-height: 1px; border: none; margin: 4px 0;")
+        v_script.addWidget(sep_script)
+
+        self.script_container = QFrame()
+        self._update_script_container_style()
+        sc_layout = QVBoxLayout(self.script_container)
+        sc_layout.setContentsMargins(10, 8, 10, 10)
+        sc_layout.setSpacing(4)
+
+        sc_top = QHBoxLayout()
+        sc_top.setContentsMargins(0, 0, 0, 0)
+        sc_top.addStretch()
+
+        self.btn_copy_script = QPushButton(self.script_container)
+        self.btn_copy_script.setCursor(Qt.PointingHandCursor)
+        self.btn_copy_script.setToolTip("Копировать в буфер обмена")
+        self.btn_copy_script.setFixedSize(26, 26)
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        copy_icon_path = os.path.join(base_dir, "assets", "icons", "copy_icon.png").replace("\\", "/")
+        self.copy_icon = QIcon(copy_icon_path)
+
+        self.btn_copy_script.setIcon(self.copy_icon)
+        self.btn_copy_script.setStyleSheet(
+            "QPushButton { border: 1px solid #CBD5E1; background: #FFFFFF; border-radius: 4px; padding: 0px; } "
+            "QPushButton:hover { background-color: #F1F5F9; border-color: #94A3B8; }"
+        )
+        self.btn_copy_script.clicked.connect(self._on_copy_script_clicked)
+        sc_top.addWidget(self.btn_copy_script)
+        sc_layout.addLayout(sc_top)
+
+        self.script_text_edit = QTextEdit()
+        self.script_text_edit.setStyleSheet(
+            "QTextEdit { border: none; font-size: 13px; color: #0F172A; line-height: 1.45; background: transparent; padding: 2px; }"
+        )
+        sc_layout.addWidget(self.script_text_edit, stretch=1)
+        v_script.addWidget(self.script_container, stretch=1)
+
+        self.right_stack.addWidget(tab_script_widget)
+
+        info_layout.addWidget(self.right_stack, stretch=1)
+
+        self._switch_right_tab(0)
+
+        self.splitter.addWidget(info_frame)
+        self.splitter.setCollapsible(0, False)
+        self.splitter.setCollapsible(1, True)
+        self.splitter.setSizes([720, 360])
+
+        main_layout.addWidget(self.splitter, stretch=1)
 
     def refresh_table(self, select_debtor_id: int = None):
-        """Перезагружает список должников из базы данных в таблицу и при необходимости выбирает запись."""
+        """Перезагружает список должников из базы данных в таблицу и сохраняет горизонтальную позицию скролла."""
         self.current_debtors = self.db_manager.get_debtors()
         self.table.setRowCount(0)
         self.lbl_count.setText(f"{len(self.current_debtors)} записей")
@@ -251,19 +507,28 @@ class KartotekaPanel(QWidget):
 
         if target_row >= 0:
             self.table.selectRow(target_row)
-            self.table.scrollToItem(self.table.item(target_row, 1))
         else:
             self._on_table_selection_changed()
 
+        # Всегда держим левый край таблицы на виду (колонка ФИО)
+        self.table.horizontalScrollBar().setValue(0)
         self.debtors_changed.emit()
+
+    def _switch_right_tab(self, index: int):
+        self.right_stack.setCurrentIndex(index)
+        self._update_tab_button_styles()
 
     def _on_table_selection_changed(self):
         selected_rows = self.table.selectionModel().selectedRows()
         if not selected_rows:
             self.selected_debtor = None
             self.info_content.setText("Выберите должника из списка слева\nдля просмотра информации")
+            self.deadlines_content.setText("Выберите должника для расчёта контрольных сроков.")
+            self.script_text_edit.clear()
             self.btn_edit_selected.setEnabled(False)
             self.btn_delete_selected.setEnabled(False)
+            self.btn_gen_consent.setEnabled(False)
+            self.btn_gen_publications.setEnabled(False)
             return
 
         row = selected_rows[0].row()
@@ -271,11 +536,280 @@ class KartotekaPanel(QWidget):
             self.selected_debtor = self.current_debtors[row]
             self.btn_edit_selected.setEnabled(True)
             self.btn_delete_selected.setEnabled(True)
+            self.btn_gen_consent.setEnabled(True)
+            self.btn_gen_publications.setEnabled(True)
             self._render_debtor_info(self.selected_debtor)
+            self._render_debtor_deadlines(self.selected_debtor)
+            self._update_script_message_text()
 
     def _render_debtor_info(self, debtor: dict):
         text = export_debtor_to_text(debtor)
         self.info_content.setText(text)
+
+    def _render_debtor_deadlines(self, debtor: dict):
+        raw = debtor.get("parsed_raw") or {}
+        dec_date_str = debtor.get("decision_date") or raw.get("decision_date") or ""
+
+        if not dec_date_str:
+            self.deadlines_content.setText(
+                "<div style='font-size: 13px; color: #64748B; padding: 14px; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px;'>"
+                "<b>Дата решения суда не указана в карточке должника.</b><br><br>"
+                "Для автоматического расчета дедлайнов (ЕФРСБ, Коммерсантъ, Запросы) "
+                "нажмите <i>'Редактировать'</i> и укажите дату судебного акта."
+                "</div>"
+            )
+            return
+
+        dl = calculate_deadlines(dec_date_str)
+        if not dl:
+            self.deadlines_content.setText(
+                f"<div style='font-size: 13px; color: #991B1B; padding: 14px; background: #FEE2E2; border-radius: 8px;'>"
+                f"Не удалось распознать дату судебного акта: <b>{dec_date_str}</b>"
+                "</div>"
+            )
+            return
+
+        efrsb = dl["efrsb"]
+        kom = dl["kommersant"]
+        inq = dl["inquiries_start"]
+
+        blocks = []
+
+        # 1. ЕФРСБ (если не просрочен)
+        if not efrsb.get("is_overdue", False):
+            blocks.append(f"""
+            <div style='padding: 14px 0; border-bottom: 1px solid #E5E7EB;'>
+                <table style='width: 100%; border-collapse: collapse;'>
+                    <tr>
+                        <td style='vertical-align: middle;'>
+                            <div style='font-size: 13px; font-weight: 700; color: #0F172A;'>{efrsb['title']}</div>
+                        </td>
+                        <td style='text-align: right; vertical-align: middle;'>
+                            <span style='background-color: {efrsb['badge']['bg']}; color: {efrsb['badge']['color']}; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;'>{efrsb['badge']['text']}</span>
+                        </td>
+                    </tr>
+                </table>
+                <div style='margin-top: 5px; font-size: 12px; color: #334155;'>
+                    Крайний срок: <b>{efrsb['date']}</b>
+                </div>
+            </div>
+            """)
+
+        # 2. Коммерсантъ (если не просрочен)
+        if not kom.get("is_overdue", False):
+            blocks.append(f"""
+            <div style='padding: 14px 0; border-bottom: 1px solid #E5E7EB;'>
+                <table style='width: 100%; border-collapse: collapse;'>
+                    <tr>
+                        <td style='vertical-align: middle;'>
+                            <div style='font-size: 13px; font-weight: 700; color: #0F172A;'>{kom['title']}</div>
+                        </td>
+                        <td style='text-align: right; vertical-align: middle;'>
+                            <span style='background-color: {kom['badge']['bg']}; color: {kom['badge']['color']}; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;'>{kom['badge']['text']}</span>
+                        </td>
+                    </tr>
+                </table>
+                <div style='margin-top: 5px; font-size: 12px; color: #334155;'>
+                    Крайний срок: <b>{kom['date']}</b>
+                </div>
+            </div>
+            """)
+
+        # 3. Отправка запросов
+        blocks.append(f"""
+        <div style='padding-top: 14px;'>
+            <table style='width: 100%; border-collapse: collapse;'>
+                <tr>
+                    <td style='vertical-align: middle;'>
+                        <div style='font-size: 13px; font-weight: 700; color: #0F172A;'>{inq['title']}</div>
+                    </td>
+                    <td style='text-align: right; vertical-align: middle;'>
+                        <span style='background-color: {inq['badge']['bg']}; color: {inq['badge']['color']}; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;'>{inq['badge']['text']}</span>
+                    </td>
+                </tr>
+            </table>
+            <div style='margin-top: 5px; font-size: 12px; color: #334155;'>
+                Доступно: с <b>{inq['date']}</b>
+            </div>
+        </div>
+        """)
+
+        stages_html = "\n".join(blocks)
+
+        html = f"""
+        <div style='font-family: Inter, Segoe UI, sans-serif; background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 8px; padding: 16px 18px; color: #1E293B;'>
+            <!-- Верхняя строка: Дата решения суда -->
+            <div style='padding-bottom: 12px; border-bottom: 1px solid #E5E7EB; font-size: 13px;'>
+                <span style='color: #64748B;'>Дата решения суда:</span> <b style='color: #0F172A;'>{dl['decision_date']}</b>
+            </div>
+
+            {stages_html}
+        </div>
+        """
+        self.deadlines_content.setText(html)
+
+    def _set_script_mode(self, mode: str):
+        self.script_mode = mode
+        self._update_mode_button_styles()
+        self._rebuild_script_checkboxes()
+        self._update_script_message_text()
+
+    def _rebuild_script_checkboxes(self):
+        # Очищаем текущие чекбоксы
+        while self.cb_grid_layout.count():
+            item = self.cb_grid_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+        self.script_checkboxes = []
+        doc_list = FIRST_CONTACT_DOCS if self.script_mode == "first" else COURT_ORDER_DOCS
+
+        for key, label_text, default_checked in doc_list:
+            cb = QCheckBox(label_text)
+            cb.setChecked(default_checked)
+            cb.setStyleSheet("QCheckBox { font-size: 13px; color: #1E293B; spacing: 8px; }")
+            cb.stateChanged.connect(self._update_script_message_text)
+            self.script_checkboxes.append((cb, label_text))
+            self.cb_grid_layout.addWidget(cb)
+
+    def _update_script_message_text(self):
+        if not self.selected_debtor:
+            self.script_text_edit.clear()
+            return
+
+        fio = self.selected_debtor.get("full_name", "").strip()
+        parts = fio.split()
+        if len(parts) >= 2:
+            first_name = parts[1]
+        elif parts:
+            first_name = parts[0]
+        else:
+            first_name = "Уважаемый клиент"
+
+        case_no = self.selected_debtor.get("case_number", "").strip()
+        mgr_fio = self.settings.manager_fio if hasattr(self.settings, "manager_fio") else "арбитражного управляющего"
+
+        needed_docs = []
+        has_gosuslugi = False
+        for cb, label_text in self.script_checkboxes:
+            if cb.isChecked():
+                if "госуслуг" in label_text.lower():
+                    has_gosuslugi = True
+                else:
+                    needed_docs.append(label_text)
+
+        if self.script_mode == "court":
+            # Сценарий: Определение суда
+            case_part = f" № {case_no}" if case_no else ""
+            lines = [
+                f"Добрый день, {first_name}!\n",
+                f"Вышло определение суда по вашему делу{case_part}. Суд запросил следующие документы:\n"
+            ]
+            if needed_docs or has_gosuslugi:
+                idx = 1
+                for doc in needed_docs:
+                    lines.append(f"{idx}. {doc};")
+                    idx += 1
+                if has_gosuslugi:
+                    lines.append(f"{idx}. Логин и пароль от госуслуг;")
+                lines.append("")
+                lines.append(
+                    "Пожалуйста, предоставьте эти документы за 5 дней до судебного заседания, "
+                    "чтобы мы успели сформировать позицию и заблаговременно подгрузить их в суд."
+                )
+            else:
+                lines.append("Все запрашиваемые судом документы уже в распоряжении управляющего. Спасибо!\n")
+
+            lines.append("\nЕсли у вас есть вопросы по списку документов — я на связи!")
+        else:
+            # Сценарий: Первый контакт с клиентом
+            lines = [
+                f"Здравствуйте, {first_name}!\n",
+                f"Я помощник финансового управляющего ({mgr_fio}). "
+                "Мы начинаем процедуру подготовки документов к вашему банкротству.\n"
+            ]
+            if needed_docs or has_gosuslugi:
+                lines.append("Пожалуйста, направьте мне качественные фото или сканы следующих документов:")
+                for i, doc in enumerate(needed_docs, 1):
+                    lines.append(f"{i}. {doc};")
+                lines.append("")
+
+                if has_gosuslugi:
+                    lines.append("Также необходимы:")
+                    lines.append("• Логин и пароль от госуслуг (все остальные справки и документы будут скачиваться оттуда).\n")
+            else:
+                lines.append("Все основные документы по списку уже получены. Спасибо!\n")
+
+            lines.append("Если у вас возникнут вопросы по списку документов — я на связи!")
+
+        self.script_text_edit.setPlainText("\n".join(lines))
+
+    def _on_copy_script_clicked(self):
+        text = self.script_text_edit.toPlainText().strip()
+        if not text:
+            return
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
+
+    def _generate_consent_doc(self):
+        if not self.selected_debtor:
+            return
+
+        base_out = self.settings.output_dir
+        if not os.path.exists(base_out):
+            try:
+                os.makedirs(base_out, exist_ok=True)
+            except Exception:
+                base_out = os.path.expanduser("~/Downloads")
+
+        debtor_fio = self.selected_debtor.get("full_name", "").strip() or "Должник"
+        mgr_fio = getattr(self.settings, "manager_fio", "") or "Гусарова Ксения Андреевна"
+
+        short_mgr = format_short_fio(mgr_fio)
+        short_debtor = format_short_fio(debtor_fio)
+
+        # Файл: "Заявка АУ {Фамилия и инициалы фин управляющего}_{Фамилия и инициалы фин должника}.docx"
+        filename = f"Заявка АУ {short_mgr}_{short_debtor}.docx"
+        out_path = os.path.join(base_out, filename)
+
+        try:
+            generate_consent_doc(self.selected_debtor, self.settings, out_path)
+
+            dlg = InquirySuccessDialog(output_dir=base_out, inquiries_count=1, parent=self)
+            dlg.setWindowTitle("Согласие сформировано - Арбитрум")
+            dlg.exec()
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка формирования", f"Не удалось создать заявление-согласие:\n{e}")
+
+    def _generate_publications_docs(self):
+        if not self.selected_debtor:
+            return
+
+        base_out = self.settings.output_dir
+        if not os.path.exists(base_out):
+            try:
+                os.makedirs(base_out, exist_ok=True)
+            except Exception:
+                base_out = os.path.expanduser("~/Downloads")
+
+        debtor_fio = self.selected_debtor.get("full_name", "").strip() or "Должник"
+        safe_fio = debtor_fio.replace(" ", "_")
+        target_dir = os.path.join(base_out, f"Публикации_{safe_fio}")
+        os.makedirs(target_dir, exist_ok=True)
+
+        kom_path = os.path.join(target_dir, f"Заявка_Коммерсантъ_{safe_fio}.docx")
+        efrsb_path = os.path.join(target_dir, f"Сообщение_ЕФРСБ_{safe_fio}.docx")
+
+        try:
+            generate_kommersant_doc(self.selected_debtor, self.settings, kom_path)
+            generate_efrsb_doc(self.selected_debtor, self.settings, efrsb_path)
+
+            dlg = InquirySuccessDialog(output_dir=target_dir, inquiries_count=2, parent=self)
+            dlg.setWindowTitle("Письма сформированы - Арбитрум")
+            dlg.exec()
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка формирования", f"Не удалось создать документы:\n{e}")
 
     def _on_table_double_clicked(self, item):
         self._edit_selected_debtor()
@@ -392,12 +926,10 @@ class KartotekaPanel(QWidget):
                 return
 
             if len(records) == 1:
-                # Открываем модалку для подтверждения/редактирования
                 dlg = DebtorEditDialog(debtor_data=records[0], debtor_id=None, parent=self)
                 dlg.debtor_saved.connect(self._save_new_debtor)
                 dlg.exec()
             else:
-                # Пакетное добавление
                 added_count = 0
                 for r in records:
                     self.db_manager.save_debtor_full(r, debtor_id=None)

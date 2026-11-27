@@ -13,6 +13,7 @@ from ui.themes import (
 from core.updater import (
     CURRENT_VERSION, CheckUpdateThread, DownloadUpdateThread, restart_and_replace
 )
+from core.database import DatabaseManager
 
 
 def get_default_downloads_dir() -> str:
@@ -157,8 +158,9 @@ class SettingsDialog(QDialog):
     3. Регионы и ведомства
     """
     settings_saved = Signal()
+    backup_restored = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, db_manager: DatabaseManager = None):
         super().__init__(parent)
         self.setWindowTitle("Настройки — Арбитрум")
         self.setWindowIcon(get_app_icon())
@@ -168,6 +170,7 @@ class SettingsDialog(QDialog):
 
         self.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
         self.app_settings = AppSettings()
+        self.db_manager = db_manager or DatabaseManager()
         self.regions_file_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "regions.json"
         )
@@ -223,7 +226,8 @@ class SettingsDialog(QDialog):
             ("Основные / Отчёт", 0),
             ("Реквизиты АУ", 1),
             ("Регионы и ведомства", 2),
-            ("Обновления", 3)
+            ("Резервные копии", 3),
+            ("Обновления", 4)
         ]
         for name, idx in tab_names:
             btn = QPushButton(name, self.sidebar_frame)
@@ -251,7 +255,10 @@ class SettingsDialog(QDialog):
         # Page 2: Regions & Agencies
         self.pages_stack.addWidget(self._create_regions_page())
 
-        # Page 3: Updates
+        # Page 3: Backup & Restore
+        self.pages_stack.addWidget(self._create_backup_page())
+
+        # Page 4: Updates
         self.pages_stack.addWidget(self._create_updates_page())
 
         content_layout.addWidget(self.pages_stack, stretch=1)
@@ -305,36 +312,22 @@ class SettingsDialog(QDialog):
         # Output Dir
         dir_group = QGroupBox("Папка для сохранения готовых отчётов")
         dir_layout = QVBoxLayout(dir_group)
-        dir_layout.setContentsMargins(14, 10, 14, 10)
+        dir_layout.setContentsMargins(14, 12, 14, 12)
         dir_layout.setSpacing(8)
 
         dir_input_layout = QHBoxLayout()
+        dir_input_layout.setSpacing(8)
         self.dir_edit = QLineEdit()
-        self.dir_edit.setFixedHeight(32)
+        self.dir_edit.setFixedHeight(34)
         dir_input_layout.addWidget(self.dir_edit, stretch=1)
 
         self.browse_btn = QPushButton("Обзор...")
-        self.browse_btn.setFixedHeight(32)
+        self.browse_btn.setObjectName("secondaryButton")
+        self.browse_btn.setFixedHeight(34)
         self.browse_btn.setCursor(Qt.PointingHandCursor)
         self.browse_btn.clicked.connect(self._browse_dir)
         dir_input_layout.addWidget(self.browse_btn)
         dir_layout.addLayout(dir_input_layout)
-
-        quick_layout = QHBoxLayout()
-        quick_layout.setSpacing(8)
-        desktop_btn = QPushButton("🖥️ Рабочий стол")
-        desktop_btn.setFixedHeight(26)
-        desktop_btn.setStyleSheet("font-size: 11px; padding: 2px 10px;")
-        desktop_btn.clicked.connect(lambda: self.dir_edit.setText(get_desktop_dir()))
-        quick_layout.addWidget(desktop_btn)
-
-        downloads_btn = QPushButton("📁 Загрузки")
-        downloads_btn.setFixedHeight(26)
-        downloads_btn.setStyleSheet("font-size: 11px; padding: 2px 10px;")
-        downloads_btn.clicked.connect(lambda: self.dir_edit.setText(get_default_downloads_dir()))
-        quick_layout.addWidget(downloads_btn)
-        quick_layout.addStretch()
-        dir_layout.addLayout(quick_layout)
         layout.addWidget(dir_group)
 
         # Output Format
@@ -344,8 +337,8 @@ class SettingsDialog(QDialog):
         fmt_layout.setSpacing(20)
 
         self.fmt_btn_group = QButtonGroup(self)
-        self.pdf_radio = QRadioButton("📄 Формат PDF")
-        self.docx_radio = QRadioButton("📝 Формат Word")
+        self.pdf_radio = QRadioButton("Формат PDF")
+        self.docx_radio = QRadioButton("Формат Word")
         self.fmt_btn_group.addButton(self.pdf_radio, 1)
         self.fmt_btn_group.addButton(self.docx_radio, 2)
         fmt_layout.addWidget(self.pdf_radio)
@@ -377,10 +370,10 @@ class SettingsDialog(QDialog):
         theme_grid.setVerticalSpacing(8)
 
         self.theme_btn_group = QButtonGroup(self)
-        self.light_radio = QRadioButton("☀️ Обычная светлая")
-        self.fem_radio = QRadioButton("🌸 Феминная")
-        self.cap_radio = QRadioButton("☕ Капучино")
-        self.lav_radio = QRadioButton("🪻 Лаванда")
+        self.light_radio = QRadioButton("Светлая (классическая)")
+        self.fem_radio = QRadioButton("Розовая")
+        self.cap_radio = QRadioButton("Капучино")
+        self.lav_radio = QRadioButton("Лаванда")
         self.theme_btn_group.addButton(self.light_radio, 1)
         self.theme_btn_group.addButton(self.fem_radio, 2)
         self.theme_btn_group.addButton(self.cap_radio, 3)
@@ -491,11 +484,13 @@ class SettingsDialog(QDialog):
 
         self.regions_list = QListWidget()
         self.regions_list.setObjectName("regionsListWidget")
-        self.regions_list.setFixedWidth(210)
+        self.regions_list.setFixedWidth(220)
         self.regions_list.currentRowChanged.connect(self._on_region_selected)
         left_col.addWidget(self.regions_list, stretch=1)
 
-        btn_add_reg = QPushButton("+ Добавить регион")
+        btn_add_reg = QPushButton("Добавить регион")
+        btn_add_reg.setObjectName("secondaryButton")
+        btn_add_reg.setFixedHeight(34)
         btn_add_reg.setCursor(Qt.PointingHandCursor)
         btn_add_reg.clicked.connect(self._on_add_region)
         left_col.addWidget(btn_add_reg)
@@ -509,25 +504,29 @@ class SettingsDialog(QDialog):
 
         self.region_detail_widget = QWidget()
         self.region_form_layout = QVBoxLayout(self.region_detail_widget)
-        self.region_form_layout.setContentsMargins(6, 4, 10, 4)
-        self.region_form_layout.setSpacing(10)
+        self.region_form_layout.setContentsMargins(10, 4, 16, 12)
+        self.region_form_layout.setSpacing(12)
 
         # Название и склонение
         row_names = QHBoxLayout()
+        row_names.setSpacing(10)
+
         v_reg_name = QVBoxLayout()
-        v_reg_name.setSpacing(2)
+        v_reg_name.setSpacing(4)
         lbl_rname = QLabel("Название региона:")
         lbl_rname.setStyleSheet("font-size: 11px; color: #64748B; font-weight: 600;")
         self.edit_reg_name = QLineEdit()
+        self.edit_reg_name.setFixedHeight(32)
         v_reg_name.addWidget(lbl_rname)
         v_reg_name.addWidget(self.edit_reg_name)
         row_names.addLayout(v_reg_name, stretch=3)
 
         v_reg_adj = QVBoxLayout()
-        v_reg_adj.setSpacing(2)
+        v_reg_adj.setSpacing(4)
         lbl_radj = QLabel("В родительном падеже (кого? чего?):")
         lbl_radj.setStyleSheet("font-size: 11px; color: #64748B; font-weight: 600;")
         self.edit_reg_adj = QLineEdit()
+        self.edit_reg_adj.setFixedHeight(32)
         v_reg_adj.addWidget(lbl_radj)
         v_reg_adj.addWidget(self.edit_reg_adj)
         row_names.addLayout(v_reg_adj, stretch=2)
@@ -535,27 +534,29 @@ class SettingsDialog(QDialog):
 
         # Ключевые слова
         v_kw = QVBoxLayout()
-        v_kw.setSpacing(2)
+        v_kw.setSpacing(4)
         lbl_kw = QLabel("Ключевые слова для автоопределения (через запятую):")
         lbl_kw.setStyleSheet("font-size: 11px; color: #64748B; font-weight: 600;")
         self.edit_reg_keywords = QLineEdit()
+        self.edit_reg_keywords.setFixedHeight(32)
         v_kw.addWidget(lbl_kw)
         v_kw.addWidget(self.edit_reg_keywords)
         self.region_form_layout.addLayout(v_kw)
 
         # Города для подсказок
         v_cities = QVBoxLayout()
-        v_cities.setSpacing(2)
+        v_cities.setSpacing(4)
         lbl_cit = QLabel("Города региона для подсказок (через запятую):")
         lbl_cit.setStyleSheet("font-size: 11px; color: #64748B; font-weight: 600;")
         self.edit_reg_cities = QLineEdit()
+        self.edit_reg_cities.setFixedHeight(32)
         v_cities.addWidget(lbl_cit)
         v_cities.addWidget(self.edit_reg_cities)
         self.region_form_layout.addLayout(v_cities)
 
         # Адреса ведомств региона
         lbl_ag = QLabel("Адреса ведомств региона (для запросов):")
-        lbl_ag.setStyleSheet("font-size: 12px; color: #0369A1; font-weight: 700; margin-top: 6px;")
+        lbl_ag.setStyleSheet("font-size: 12px; color: #0369A1; font-weight: 700; margin-top: 10px; margin-bottom: 2px;")
         self.region_form_layout.addWidget(lbl_ag)
 
         self.agency_fields = {}
@@ -577,12 +578,11 @@ class SettingsDialog(QDialog):
 
         for code, label_text in agency_labels:
             v_ag = QVBoxLayout()
-            v_ag.setSpacing(2)
+            v_ag.setSpacing(4)
             lbl = QLabel(label_text)
             lbl.setStyleSheet("font-size: 11px; color: #475569; font-weight: 600;")
             edit = QTextEdit()
-            edit.setMinimumHeight(38)
-            edit.setMaximumHeight(160)
+            edit.setFixedHeight(48)
             edit.setLineWrapMode(QTextEdit.WidgetWidth)
             edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             edit.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -740,7 +740,239 @@ class SettingsDialog(QDialog):
             self.dir_edit.setText(os.path.normpath(d))
 
     # =========================================================================
-    # Page 3: Обновления программы
+    # Page 3: Резервное копирование и восстановление
+    # =========================================================================
+    def _create_backup_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(14)
+
+        # 1. Информационная группа о текущей базе данных
+        info_group = QGroupBox("Состояние базы данных")
+        info_layout = QVBoxLayout(info_group)
+        info_layout.setContentsMargins(16, 14, 16, 14)
+        info_layout.setSpacing(8)
+
+        self.lbl_db_path = QLabel()
+        self.lbl_db_path.setWordWrap(True)
+        self.lbl_db_path.setStyleSheet("font-size: 12px; color: #334155;")
+
+        self.lbl_db_stats = QLabel()
+        self.lbl_db_stats.setStyleSheet("font-size: 12px; color: #334155;")
+
+        info_layout.addWidget(self.lbl_db_path)
+        info_layout.addWidget(self.lbl_db_stats)
+
+        # Кнопка открыть папку с базой
+        btn_open_folder = QPushButton("Открыть папку с базой данных")
+        btn_open_folder.setObjectName("secondaryButton")
+        btn_open_folder.setFixedHeight(34)
+        btn_open_folder.setCursor(Qt.PointingHandCursor)
+        btn_open_folder.clicked.connect(self._on_open_db_folder)
+        info_layout.addWidget(btn_open_folder)
+
+        layout.addWidget(info_group)
+
+        # 2. Управление резервными копиями
+        backup_group = QGroupBox("Резервное копирование и перенос данных")
+        b_layout = QVBoxLayout(backup_group)
+        b_layout.setContentsMargins(16, 14, 16, 14)
+        b_layout.setSpacing(12)
+
+        desc_lbl = QLabel(
+            "Вы можете в любой момент сохранить резервную копию всей картотеки должников в защищенный zip-архив "
+            "для переноса на другой компьютер или восстановления в случае непредвиденных обстоятельств."
+        )
+        desc_lbl.setWordWrap(True)
+        desc_lbl.setStyleSheet("font-size: 12px; color: #64748B; line-height: 1.4;")
+        b_layout.addWidget(desc_lbl)
+
+        buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(12)
+
+        self.btn_create_backup = QPushButton("Создать резервную копию...")
+        self.btn_create_backup.setObjectName("secondaryButton")
+        self.btn_create_backup.setFixedHeight(34)
+        self.btn_create_backup.setCursor(Qt.PointingHandCursor)
+        self.btn_create_backup.clicked.connect(self._on_create_backup)
+        buttons_layout.addWidget(self.btn_create_backup)
+
+        self.btn_restore_backup = QPushButton("Восстановить из копии...")
+        self.btn_restore_backup.setObjectName("secondaryButton")
+        self.btn_restore_backup.setFixedHeight(34)
+        self.btn_restore_backup.setCursor(Qt.PointingHandCursor)
+        self.btn_restore_backup.clicked.connect(self._on_restore_backup)
+        buttons_layout.addWidget(self.btn_restore_backup)
+
+        buttons_layout.addStretch()
+        b_layout.addLayout(buttons_layout)
+
+        layout.addWidget(backup_group)
+        layout.addStretch()
+
+        self._refresh_db_stats()
+        return page
+
+    def _refresh_db_stats(self):
+        stats = self.db_manager.get_stats()
+        path = stats.get("db_path", "")
+        size = stats.get("size_bytes", 0)
+        cnt = stats.get("debtor_count", 0)
+
+        size_kb = size / 1024.0
+        size_str = f"{size_kb:.1f} КБ" if size_kb < 1024 else f"{(size_kb / 1024.0):.2f} МБ"
+
+        self.lbl_db_path.setText(f"<b>Файл базы данных:</b><br>{path}")
+        self.lbl_db_stats.setText(f"<b>Записей в картотеке:</b> {cnt} &nbsp;&nbsp;|&nbsp;&nbsp; <b>Размер файла:</b> {size_str}")
+
+    def _on_open_db_folder(self):
+        stats = self.db_manager.get_stats()
+        db_dir = os.path.dirname(stats.get("db_path", ""))
+        if os.path.isdir(db_dir):
+            try:
+                os.startfile(db_dir)
+            except Exception as e:
+                QMessageBox.warning(self, "Ошибка", f"Не удалось открыть папку:\n{e}")
+        else:
+            QMessageBox.information(self, "Папка отсутствует", "Папка базы данных ещё не создана.")
+
+    def _on_create_backup(self):
+        import datetime
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+        default_filename = f"Резервная_копия_Арбитрум_{now_str}.zip"
+        default_dir = os.path.join(get_desktop_dir(), default_filename)
+
+        save_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить резервную копию",
+            default_dir,
+            "Архивы ZIP (*.zip)"
+        )
+        if not save_path:
+            return
+
+        try:
+            self.db_manager.create_backup(save_path)
+            QMessageBox.information(
+                self,
+                "Резервная копия создана",
+                f"Резервная копия картотеки должников успешно сохранена в файл:\n\n{save_path}"
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Ошибка создания копии",
+                f"Не удалось создать резервную копию:\n{e}"
+            )
+
+    def _on_restore_backup(self):
+        zip_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Выберите файл резервной копии",
+            get_desktop_dir(),
+            "Архивы ZIP (*.zip)"
+        )
+        if not zip_path:
+            return
+
+        confirm = QMessageBox.warning(
+            self,
+            "Подтверждение восстановления",
+            "Внимание! Восстановление из резервной копии заменит текущую картотеку должников "
+            "данными из выбранного архива.\n\n"
+            "Вы уверены, что хотите продолжить?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if confirm != QMessageBox.Yes:
+            return
+
+        try:
+            restored_count = self.db_manager.restore_backup(zip_path)
+            self._refresh_db_stats()
+            self.backup_restored.emit()
+            QMessageBox.information(
+                self,
+                "Восстановление завершено",
+                f"База данных успешно восстановлена!\n\nВосстановлено записей должников: {restored_count}"
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Ошибка восстановления",
+                f"Не удалось восстановить базу данных из архива:\n{e}"
+            )
+
+    def _on_create_backup(self):
+        import datetime
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+        default_filename = f"Резервная_копия_Арбитрум_{now_str}.zip"
+        default_dir = os.path.join(get_desktop_dir(), default_filename)
+
+        save_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить резервную копию",
+            default_dir,
+            "Архивы ZIP (*.zip)"
+        )
+        if not save_path:
+            return
+
+        try:
+            self.db_manager.create_backup(save_path)
+            QMessageBox.information(
+                self,
+                "Резервная копия создана",
+                f"Резервная копия картотеки должников успешно сохранена в файл:\n\n{save_path}"
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Ошибка создания копии",
+                f"Не удалось создать резервную копию:\n{e}"
+            )
+
+    def _on_restore_backup(self):
+        zip_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Выберите файл резервной копии",
+            get_desktop_dir(),
+            "Архивы ZIP (*.zip)"
+        )
+        if not zip_path:
+            return
+
+        confirm = QMessageBox.warning(
+            self,
+            "Подтверждение восстановления",
+            "Внимание! Восстановление из резервной копии заменит текущую картотеку должников "
+            "данными из выбранного архива.\n\n"
+            "Вы уверены, что хотите продолжить?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if confirm != QMessageBox.Yes:
+            return
+
+        try:
+            restored_count = self.db_manager.restore_backup(zip_path)
+            self._refresh_db_stats()
+            self.backup_restored.emit()
+            QMessageBox.information(
+                self,
+                "Восстановление завершено",
+                f"База данных успешно восстановлена!\n\nВосстановлено записей должников: {restored_count}"
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Ошибка восстановления",
+                f"Не удалось восстановить базу данных из архива:\n{e}"
+            )
+
+    # =========================================================================
+    # Page 4: Обновления программы
     # =========================================================================
     def _create_updates_page(self) -> QWidget:
         page = QWidget()

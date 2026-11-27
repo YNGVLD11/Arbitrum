@@ -253,9 +253,14 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(0)
 
     def _open_settings(self):
-        dlg = SettingsDialog(self)
+        dlg = SettingsDialog(self, db_manager=self.db_manager)
         dlg.settings_saved.connect(self._on_settings_saved)
+        dlg.backup_restored.connect(self._on_backup_restored)
         dlg.exec()
+
+    def _on_backup_restored(self):
+        if hasattr(self, "kartoteka_panel"):
+            self.kartoteka_panel.refresh_table()
 
     def _on_settings_saved(self):
         new_theme = self.app_settings.theme
@@ -331,11 +336,14 @@ class MainWindow(QMainWindow):
         if hasattr(self, "progress_dlg") and self.progress_dlg.isVisible():
             self.progress_dlg.accept()
 
+        out_p = result_meta.get("output_path", "")
+        if out_p and os.path.exists(out_p):
+            self.preview_panel.set_document(out_p, rotation=0)
+
         success_dlg = BuildSuccessDialog(result_meta, self)
         success_dlg.exec()
 
         if self.app_settings.auto_open_file:
-            out_p = result_meta.get("output_path", "")
             if os.path.exists(out_p):
                 try:
                     os.startfile(out_p)

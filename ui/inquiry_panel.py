@@ -37,6 +37,8 @@ class HintLineEdit(QLineEdit):
     """
     Enhanced QLineEdit that displays a tooltip hint directly under the mouse cursor
     on hover so users can easily identify what the field represents even when filled.
+    Supports input masks that are displayed ONLY when the field has focus or has content,
+    leaving clean placeholder text when the field is empty and not focused.
     """
     def __init__(self, placeholder: str = "", hint_text: str = "", parent=None):
         super().__init__(parent)
@@ -44,6 +46,48 @@ class HintLineEdit(QLineEdit):
         self.hint_text = hint_text or placeholder
         self.setToolTip(self.hint_text)
         self.setObjectName("formLineEdit")
+        self._mask_pattern = ""
+
+    def setInputMask(self, mask: str):
+        self._mask_pattern = mask
+        if self.hasFocus() or self.has_content():
+            super().setInputMask(self._mask_pattern)
+        else:
+            super().setInputMask("")
+
+    def has_content(self) -> bool:
+        raw = super().text()
+        return any(c.isalnum() for c in raw)
+
+    def text(self) -> str:
+        if not self.has_content():
+            return ""
+        return super().text()
+
+    def setText(self, text):
+        val_str = "" if text is None else str(text)
+        if any(c.isalnum() for c in val_str):
+            if self._mask_pattern and not super().inputMask():
+                super().setInputMask(self._mask_pattern)
+            super().setText(val_str)
+        else:
+            if not self.hasFocus() and self._mask_pattern:
+                super().setInputMask("")
+            super().setText("")
+
+    def focusInEvent(self, event):
+        if self._mask_pattern and not super().inputMask():
+            cur = self.text()
+            super().setInputMask(self._mask_pattern)
+            if cur:
+                super().setText(cur)
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        if self._mask_pattern and not self.has_content():
+            super().setInputMask("")
+            super().setText("")
 
     def enterEvent(self, event):
         super().enterEvent(event)
@@ -227,6 +271,7 @@ class InquiryGeneratorPanel(QWidget):
         row_court = QHBoxLayout()
         self.edit_case_no = self._make_input("Номер дела", "Номер арбитражного дела")
         self.edit_dec_date = self._make_input("Дата решения суда", "Дата судебного акта / решения")
+        self.edit_dec_date.setInputMask("99.99.9999;_")
         row_court.addWidget(self.edit_case_no, stretch=3)
         row_court.addWidget(self.edit_dec_date, stretch=2)
         form_layout.addLayout(row_court)
@@ -236,6 +281,7 @@ class InquiryGeneratorPanel(QWidget):
 
         # Added field: Дата принятия заявления
         self.edit_petition_date = self._make_input("Дата принятия заявления", "Дата принятия заявления к производству судом (для расчета 3-летнего периода запроса сведений)")
+        self.edit_petition_date.setInputMask("99.99.9999;_")
         form_layout.addWidget(self.edit_petition_date)
 
         # Section 2: Должник
@@ -252,6 +298,7 @@ class InquiryGeneratorPanel(QWidget):
 
         row_debtor_b = QHBoxLayout()
         self.edit_debtor_birth = self._make_input("Дата рождения", "Дата рождения должника")
+        self.edit_debtor_birth.setInputMask("99.99.9999;_")
         self.edit_debtor_place = self._make_input("Место рождения", "Место рождения должника")
         row_debtor_b.addWidget(self.edit_debtor_birth, stretch=2)
         row_debtor_b.addWidget(self.edit_debtor_place, stretch=3)
@@ -259,7 +306,9 @@ class InquiryGeneratorPanel(QWidget):
 
         row_debtor_ids = QHBoxLayout()
         self.edit_debtor_snils = self._make_input("СНИЛС", "СНИЛС должника")
+        self.edit_debtor_snils.setInputMask("999-999-999 99;_")
         self.edit_debtor_inn = self._make_input("ИНН", "ИНН должника")
+        self.edit_debtor_inn.setInputMask("999999999999;_")
         row_debtor_ids.addWidget(self.edit_debtor_snils)
         row_debtor_ids.addWidget(self.edit_debtor_inn)
         form_layout.addLayout(row_debtor_ids)
@@ -269,9 +318,13 @@ class InquiryGeneratorPanel(QWidget):
 
         row_pass1 = QHBoxLayout()
         self.edit_pass_series = self._make_input("Паспорт серия", "Серия паспорта должника")
+        self.edit_pass_series.setInputMask("9999;_")
         self.edit_pass_num = self._make_input("Паспорт номер", "Номер паспорта должника")
+        self.edit_pass_num.setInputMask("999999;_")
         self.edit_pass_date = self._make_input("Дата выдачи", "Дата выдачи паспорта должника")
+        self.edit_pass_date.setInputMask("99.99.9999;_")
         self.edit_pass_code = self._make_input("Код подразделения", "Код подразделения органа, выдавшего паспорт")
+        self.edit_pass_code.setInputMask("999-999;_")
         row_pass1.addWidget(self.edit_pass_series)
         row_pass1.addWidget(self.edit_pass_num)
         row_pass1.addWidget(self.edit_pass_date)
@@ -369,8 +422,10 @@ class InquiryGeneratorPanel(QWidget):
 
         row_sp_b = QHBoxLayout()
         self.edit_spouse_birth = self._make_input("Дата рождения супруга", "Дата рождения супруга")
+        self.edit_spouse_birth.setInputMask("99.99.9999;_")
         self.edit_spouse_place = self._make_input("Место рождения супруга", "Место рождения супруга")
         self.edit_marriage_date = self._make_input("Дата заключения или расторжения брака", "Дата регистрации или прекращения брака")
+        self.edit_marriage_date.setInputMask("99.99.9999;_")
         row_sp_b.addWidget(self.edit_spouse_birth)
         row_sp_b.addWidget(self.edit_spouse_place)
         row_sp_b.addWidget(self.edit_marriage_date)
@@ -378,7 +433,9 @@ class InquiryGeneratorPanel(QWidget):
 
         row_sp_ids = QHBoxLayout()
         self.edit_spouse_snils = self._make_input("СНИЛС супруга", "СНИЛС супруга")
+        self.edit_spouse_snils.setInputMask("999-999-999 99;_")
         self.edit_spouse_inn = self._make_input("ИНН супруга", "ИНН супруга")
+        self.edit_spouse_inn.setInputMask("999999999999;_")
         row_sp_ids.addWidget(self.edit_spouse_snils)
         row_sp_ids.addWidget(self.edit_spouse_inn)
         spouse_cont_layout.addLayout(row_sp_ids)
@@ -503,7 +560,7 @@ class InquiryGeneratorPanel(QWidget):
         # BOTTOM ACTION BAR: Centered "Сформировать запросы" button
         # =====================================================================
         bottom_bar = QHBoxLayout()
-        bottom_bar.setContentsMargins(0, 4, 0, 0)
+        bottom_bar.setContentsMargins(0, 4, 0, 4)
         bottom_bar.addStretch()
 
         self.btn_generate = QPushButton("Сформировать запросы")

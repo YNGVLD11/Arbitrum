@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 from PySide6.QtCore import QObject, Signal, QThread
 
-CURRENT_VERSION = "v1.3.0"
+CURRENT_VERSION = "v1.4.0"
 GITHUB_REPO = "YNGVLD11/Arbitrum"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 

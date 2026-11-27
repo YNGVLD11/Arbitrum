@@ -32,6 +32,8 @@ def clean_court_name(raw_court: str) -> str:
     if not raw_court:
         return ""
     c = " ".join(raw_court.split())
+    # Cut off judges / clerk suffixes: 'в составе судьи...', 'председательствующего...'
+    c = re.split(r'\s+в\s+составе|\s+судь[ия]|\s+председательствующ|\s+дело\b', c, flags=re.IGNORECASE)[0].strip()
     c = re.sub(r'област\s+и', 'области', c, flags=re.IGNORECASE)
     c = re.sub(r'кра\s+я', 'края', c, flags=re.IGNORECASE)
     parts = c.split()
@@ -46,6 +48,36 @@ def clean_court_name(raw_court: str) -> str:
         return " ".join(res)
     return c
 
+def _inflect_surname_rule(surn: str, gender: str, case: str) -> str:
+    """
+    Правила склонения стандартных русских фамилий, защищающие от ошибок словаря
+    (например, когда 'Плешков' ошибочно трактуется как Pltm plur 'Плешковы').
+    """
+    surn_low = surn.lower()
+    if gender == 'masc':
+        if surn_low.endswith(('ов', 'ев', 'ёв', 'ин', 'ын')):
+            m = {'nomn': '', 'gent': 'а', 'datv': 'у', 'accs': 'а', 'ablt': 'ым', 'loct': 'е'}
+            return (surn + m.get(case, '')).capitalize()
+        elif surn_low.endswith(('ский', 'цкий')):
+            base = surn[:-2]
+            m = {'nomn': 'ий', 'gent': 'ого', 'datv': 'ому', 'accs': 'ого', 'ablt': 'им', 'loct': 'ом'}
+            return (base + m.get(case, 'ий')).capitalize()
+        elif surn_low.endswith(('ой',)):
+            base = surn[:-2]
+            m = {'nomn': 'ой', 'gent': 'ого', 'datv': 'ому', 'accs': 'ого', 'ablt': 'ым', 'loct': 'ом'}
+            return (base + m.get(case, 'ой')).capitalize()
+    elif gender == 'femn':
+        if surn_low.endswith(('ова', 'ева', 'ёва', 'ина', 'ына')):
+            base = surn[:-1]
+            m = {'nomn': 'а', 'gent': 'ой', 'datv': 'ой', 'accs': 'у', 'ablt': 'ой', 'loct': 'ой'}
+            return (base + m.get(case, 'а')).capitalize()
+        elif surn_low.endswith(('ская', 'цкая')):
+            base = surn[:-2]
+            m = {'nomn': 'ая', 'gent': 'ой', 'datv': 'ой', 'accs': 'ую', 'ablt': 'ой', 'loct': 'ой'}
+            return (base + m.get(case, 'ая')).capitalize()
+    return ""
+
+
 def inflect_fio(fio_str: str, case: str = 'gent') -> str:
     """
     Inflects full Russian name (Surname Name Patronymic) to a specified case ('gent', 'ablt', 'nomn', etc.)
@@ -57,6 +89,9 @@ def inflect_fio(fio_str: str, case: str = 'gent') -> str:
 
     surn, name, patr = parts
     gender = 'femn' if patr.endswith(('вна', 'чна', 'шна', 'ична', 'вной', 'чной', 'вны', 'чны', 'шной', 'вну')) else 'masc'
+
+    # Приоритет правилу склонения фамилий
+    s_rule = _inflect_surname_rule(surn, gender, case)
 
     def _inflect_part(part: str, tag_name: str) -> str:
         candidates = morph.parse(part)
@@ -76,7 +111,7 @@ def inflect_fio(fio_str: str, case: str = 'gent') -> str:
         inf = candidates[0].inflect({case})
         return inf.word.capitalize() if inf else part
 
-    s = _inflect_part(surn, 'Surn')
+    s = s_rule if s_rule else _inflect_part(surn, 'Surn')
     n = _inflect_part(name, 'Name')
     p = _inflect_part(patr, 'Patr')
     return f"{s} {n} {p}"
@@ -129,13 +164,19 @@ def extract_text_from_file(file_path: str) -> str:
 
 def parse_court_decision(file_path: str) -> Dict[str, Any]:
     """
-    Analyzes court decision text and extracts structured data.
+    Analyzes court decision text (or file) and extracts structured data.
     """
-    text = extract_text_from_file(file_path)
+    if "\n" in file_path or len(file_path) > 260 or not os.path.exists(file_path):
+        text = file_path
+        actual_path = ""
+    else:
+        text = extract_text_from_file(file_path)
+        actual_path = file_path
+
     norm = re.sub(r'[ \t]+', ' ', text)
 
     res = {
-        "file_path": file_path,
+        "file_path": actual_path,
         "court_name": "",
         "case_number": "",
         "decision_date": "",
@@ -180,7 +221,7 @@ def parse_court_decision(file_path: str) -> Dict[str, Any]:
     }
 
     # 1. Court Name
-    m_court = re.search(r'(АРБИТРАЖНЫЙ\s+СУД\s+[А-Яа-яЁё\s]+?)(?=\n|\s*Дело|\s*Р\s*Е\s*Ш\s*Е\s*Н\s*И\s*Е|\s*О\s*П\s*Р\s*Е\s*Д\s*Е\s*Л\s*Е\s*Н\s*И\s*Е|\s*\d{1,2}\s+[а-яА-ЯёЁ]+)', norm, re.IGNORECASE)
+    m_court = re.search(r'(АРБИТРАЖНЫЙ\s+СУД\s+[А-Яа-яЁё\s]+?)(?=\s+в\s+составе|\n|\s*Дело|\s*Р\s*Е\s*Ш\s*Е\s*Н\s*И\s*Е|\s*О\s*П\s*Р\s*Е\s*Д\s*Е\s*Л\s*Е\s*Н\s*И\s*Е|\s*\d{1,2}\s+[а-яА-ЯёЁ]+)', norm, re.IGNORECASE)
     if m_court:
         res["court_name"] = clean_court_name(m_court.group(1))
 
@@ -239,13 +280,58 @@ def parse_court_decision(file_path: str) -> Dict[str, Any]:
             if "супруг" not in raw_cand.lower() and len(raw_cand.split()) == 3:
                 debtor_fio = raw_cand
 
+    # Strategy 5: Anchor backwards from INN / SNILS (for decisions like: 'признать банкротом Поварницыну Дарью Викторовну, 17.04.1986 года рождения, ..., ИНН ...')
+    if not debtor_fio:
+        m_anchor = re.search(r'(?:ИНН|СНИЛС)[:\s]*\d', single_norm, re.IGNORECASE)
+        if m_anchor:
+            pre_anchor = single_norm[max(0, m_anchor.start() - 350):m_anchor.start()]
+            # Pattern: 3 words capitalized followed by date of birth or comma
+            m_cand_pre = re.search(r'([А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+)[,\s]+(?:\d{2}\.\d{2}\.\d{4}|(?:\d{1,2}\s+[а-яА-ЯёЁ]+\s+\d{4})|\()', pre_anchor)
+            if m_cand_pre:
+                cand_text = m_cand_pre.group(1).strip()
+                if not any(k in cand_text.lower() for k in ('арбитражный', 'судья', 'управляющий', 'гусарова')):
+                    debtor_fio = cand_text
+
+    # Strategy 6: NLP / Natasha extraction fallback
+    if not debtor_fio:
+        try:
+            from natasha import Segmenter, MorphVocab, NewsEmbedding, NewsMorphTagger, NewsNERTagger, Doc
+            _seg = Segmenter()
+            _mv = MorphVocab()
+            _emb = NewsEmbedding()
+            _mt = NewsMorphTagger(_emb)
+            _nt = NewsNERTagger(_emb)
+            _doc = Doc(single_norm[:2500])
+            _doc.segment(_seg)
+            _doc.tag_morph(_mt)
+            _doc.tag_ner(_nt)
+            for s in _doc.spans:
+                if s.type == "PER":
+                    s.normalize(_mv)
+                    p_name = s.normal
+                    p_parts = p_name.split()
+                    if len(p_parts) == 3 and not any(k in p_name.lower() for k in ('судь', 'гусарова', 'секретар', 'председател')):
+                        debtor_fio = p_name
+                        break
+        except Exception:
+            pass
+
     if debtor_fio:
         nomn_debtor = to_nomn_fio(debtor_fio)
         res["debtor_fio"] = nomn_debtor
         res["debtor_fio_gen"] = inflect_fio(nomn_debtor, 'gent')
 
     # 4.1 Debtor Details (Birth Date, Birth Place, Address, SNILS, INN)
-    mb = re.search(r'(\d{2}\.\d{2}\.\d{4})\s*г\.?\s*р', single_norm, re.IGNORECASE)
+    # 4.1.1 Birth Date: '17.04.1986 г.р.' or '17.04.1986 года рождения' or right after debtor name
+    mb = re.search(r'(\d{2}\.\d{2}\.\d{4})\s*(?:г\.?\s*р|года рождения|г\.\s*рождения)', single_norm, re.IGNORECASE)
+    if not mb and debtor_fio:
+        # Search directly near debtor fio
+        idx_fio = single_norm.find(debtor_fio)
+        if idx_fio >= 0:
+            after_fio = single_norm[idx_fio:idx_fio + 200]
+            mb = re.search(r'(\d{2}\.\d{2}\.\d{4})', after_fio)
+    if not mb:
+        mb = re.search(r'(?:дата рождения|родивш[ая][яся|егося]+)[:\s]*(\d{2}\.\d{2}\.\d{4})', single_norm, re.IGNORECASE)
     if mb:
         res["debtor_birth_date"] = mb.group(1)
 
@@ -261,12 +347,16 @@ def parse_court_decision(file_path: str) -> Dict[str, Any]:
         addr = re.sub(r'\s{2,}', ' ', addr)
         res["debtor_address"] = addr
 
-    ms = re.search(r'СНИЛС[:\s]*(\d{3}[\-–—\s]*\d{3}[\-–—\s]*\d{3}[\-–—\s]*\d{2})', single_norm, re.IGNORECASE)
+    ms = re.search(r'СНИЛС[:\s]*([\d\s\-–—]{11,25})', single_norm, re.IGNORECASE)
     if ms:
         raw_s = ms.group(1).strip()
-        raw_s = re.sub(r'(\d+)\s*[\-–—]\s*(\d+)', r'\1-\2', raw_s)
-        raw_s = re.sub(r'\s{2,}', ' ', raw_s)
-        res["debtor_snils"] = raw_s
+        digits = re.sub(r'\D', '', raw_s)[:11]
+        if len(digits) == 11:
+            res["debtor_snils"] = f"{digits[:3]}-{digits[3:6]}-{digits[6:9]} {digits[9:]}"
+        else:
+            raw_s = re.sub(r'(\d+)\s*[\-–—]\s*(\d+)', r'\1-\2', raw_s)
+            raw_s = re.sub(r'\s{2,}', ' ', raw_s)
+            res["debtor_snils"] = raw_s
 
     mi = re.search(r'ИНН[:\s]*(\d{12})', single_norm, re.IGNORECASE)
     if mi:

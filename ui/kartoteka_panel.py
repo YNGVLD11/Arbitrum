@@ -16,6 +16,7 @@ from core.debtor_exporter import (
 from core.publications_generator import (
     generate_kommersant_doc, generate_efrsb_doc, generate_consent_doc, format_short_fio
 )
+from core.converter import convert_word_to_pdf
 from ui.inquiry_success_dialog import InquirySuccessDialog
 from ui.debtor_dialog import DebtorEditDialog
 
@@ -41,26 +42,14 @@ THEME_SELECTION_BORDER_COLORS = {
 }
 
 FIRST_CONTACT_DOCS = [
-    ("pass", "Паспорт", True),
+    ("pass", "Паспорт (все заполненные страницы)", True),
     ("inn", "ИНН", True),
     ("snils", "СНИЛС", True),
     ("marriage_kids", "Свидетельство о браке, о рождении детей", True),
-    ("deals", "Документы по сделкам", True),
-    ("creditors", "Сведения о кредиторах", True),
-    ("bank_stmts", "Выписки по текущим счетам", True),
-    ("job", "Сведения о трудовой деятельности", True),
+    ("deals", "Документы по сделкам (договоры о продаже)", True),
+    ("creditors", "Сведения о кредиторах (кто, сколько должны)", True),
+    ("bank_stmts", "Выписки по текущим счетам (2-3 справок будет достаточно)", True),
     ("gosuslugi", "Логин и пароль от госуслуг", True),
-]
-
-COURT_ORDER_DOCS = [
-    ("pass", "Паспорт РФ", True),
-    ("snils_inn", "СНИЛС и ИНН", True),
-    ("marriage", "Свидетельство о браке / разводе", True),
-    ("ndfl", "Справки 2-НДФЛ", True),
-    ("work_book", "Трудовая книжка", True),
-    ("bank_stmts", "Выписки по счетам", False),
-    ("credit_agrs", "Кредитные договоры", False),
-    ("property", "Документы на имущество", False),
 ]
 
 
@@ -142,29 +131,7 @@ class KartotekaPanel(QWidget):
     def set_theme(self, theme_name: str):
         self.current_theme = theme_name
         self._update_tab_button_styles()
-        self._update_mode_button_styles()
         self._update_script_container_style()
-
-    def _update_mode_button_styles(self):
-        if not hasattr(self, "btn_mode_first"):
-            return
-        active_color = THEME_ACTIVE_BTN_COLORS.get(self.current_theme, "#2563EB")
-        if self.script_mode == "first":
-            self.btn_mode_first.setStyleSheet(
-                f"QPushButton {{ background-color: {active_color}; color: #FFFFFF; font-weight: 700; font-size: 11px; border-radius: 5px; border: none; padding: 0 8px; }}"
-            )
-            self.btn_mode_court.setStyleSheet(
-                "QPushButton { background-color: #F1F5F9; color: #475569; font-weight: 600; font-size: 11px; border-radius: 5px; border: 1px solid #CBD5E1; padding: 0 8px; } "
-                "QPushButton:hover { background-color: #E2E8F0; }"
-            )
-        else:
-            self.btn_mode_first.setStyleSheet(
-                "QPushButton { background-color: #F1F5F9; color: #475569; font-weight: 600; font-size: 11px; border-radius: 5px; border: 1px solid #CBD5E1; padding: 0 8px; } "
-                "QPushButton:hover { background-color: #E2E8F0; }"
-            )
-            self.btn_mode_court.setStyleSheet(
-                f"QPushButton {{ background-color: {active_color}; color: #FFFFFF; font-weight: 700; font-size: 11px; border-radius: 5px; border: none; padding: 0 8px; }}"
-            )
 
     def _update_script_container_style(self):
         bg = THEME_SELECTION_BG_COLORS.get(self.current_theme, "#EFF6FF")
@@ -201,40 +168,31 @@ class KartotekaPanel(QWidget):
         top_card_layout.setContentsMargins(14, 12, 14, 12)
         top_card_layout.setSpacing(14)
 
-        # Слева: Кнопка "+ Добавить должника вручную" и под ней Импорт/Экспорт
-        btn_col = QVBoxLayout()
-        btn_col.setSpacing(6)
-
-        self.btn_add_manual = QPushButton("+ Добавить должника вручную", self)
-        self.btn_add_manual.setObjectName("primaryButton")
-        self.btn_add_manual.setFixedHeight(34)
-        self.btn_add_manual.setCursor(Qt.PointingHandCursor)
-        self.btn_add_manual.clicked.connect(self._on_add_manual)
-        btn_col.addWidget(self.btn_add_manual)
-
-        exp_imp_layout = QHBoxLayout()
-        exp_imp_layout.setSpacing(6)
-
-        self.btn_import_txt = QPushButton("Импорт из TXT", self)
-        self.btn_import_txt.setFixedHeight(34)
-        self.btn_import_txt.setCursor(Qt.PointingHandCursor)
-        self.btn_import_txt.clicked.connect(self._import_from_text_file)
-        exp_imp_layout.addWidget(self.btn_import_txt)
-
-        self.btn_export_txt = QPushButton("Экспорт", self)
-        self.btn_export_txt.setFixedHeight(34)
-        self.btn_export_txt.setCursor(Qt.PointingHandCursor)
-        self.btn_export_txt.clicked.connect(self._on_export_clicked)
-        exp_imp_layout.addWidget(self.btn_export_txt)
-
-        btn_col.addLayout(exp_imp_layout)
-        top_card_layout.addLayout(btn_col, stretch=2)
-
-        # Справа: Блок "Перетащите решение суда..."
+        # Слева: Блок "Перетащите решение суда..."
         self.drop_area = KartotekaDropArea(self)
         self.drop_area.file_dropped.connect(self._import_from_court_file)
         self.drop_area.clicked.connect(self._open_court_file_dialog)
         top_card_layout.addWidget(self.drop_area, stretch=3)
+
+        # Справа: Кнопка "Импорт" и "Экспорт"
+        exp_imp_layout = QHBoxLayout()
+        exp_imp_layout.setSpacing(8)
+
+        self.btn_import_txt = QPushButton("Импорт", self)
+        self.btn_import_txt.setFixedHeight(44)
+        self.btn_import_txt.setCursor(Qt.PointingHandCursor)
+        self.btn_import_txt.setToolTip("Импорт должников из текстового файла (.txt) или базы данных / архива (.db, .sqlite, .zip) с автоматическим объединением")
+        self.btn_import_txt.clicked.connect(self._import_from_text_file)
+        exp_imp_layout.addWidget(self.btn_import_txt)
+
+        self.btn_export_txt = QPushButton("Экспорт", self)
+        self.btn_export_txt.setFixedHeight(44)
+        self.btn_export_txt.setCursor(Qt.PointingHandCursor)
+        self.btn_export_txt.setToolTip("Экспорт карточки выбранного должника или всей базы данных")
+        self.btn_export_txt.clicked.connect(self._on_export_clicked)
+        exp_imp_layout.addWidget(self.btn_export_txt)
+
+        top_card_layout.addLayout(exp_imp_layout, stretch=2)
 
         main_layout.addWidget(top_card)
 
@@ -277,6 +235,15 @@ class KartotekaPanel(QWidget):
         table_layout.addWidget(self.table)
 
         tbl_actions = QHBoxLayout()
+        tbl_actions.setSpacing(8)
+
+        self.btn_add_manual = QPushButton("Добавить", self)
+        self.btn_add_manual.setObjectName("primaryButton")
+        self.btn_add_manual.setFixedHeight(34)
+        self.btn_add_manual.setCursor(Qt.PointingHandCursor)
+        self.btn_add_manual.clicked.connect(self._on_add_manual)
+        tbl_actions.addWidget(self.btn_add_manual)
+
         self.btn_edit_selected = QPushButton("Редактировать")
         self.btn_edit_selected.setFixedHeight(34)
         self.btn_edit_selected.clicked.connect(self._edit_selected_debtor)
@@ -336,7 +303,7 @@ class KartotekaPanel(QWidget):
         # Tab 0: Реквизиты
         tab_props_widget = QWidget()
         v_props = QVBoxLayout(tab_props_widget)
-        v_props.setContentsMargins(0, 4, 0, 0)
+        v_props.setContentsMargins(0, 4, 0, 4)
         v_props.setSpacing(8)
 
         info_scroll = QScrollArea()
@@ -350,6 +317,8 @@ class KartotekaPanel(QWidget):
         self.info_content.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
         self.info_content.setWordWrap(True)
         self.info_content.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.info_content.setContentsMargins(12, 10, 12, 10)
+        self.info_content.setStyleSheet("QLabel#kartotekaInfoLabel { line-height: 1.45; font-size: 13px; }")
         info_scroll.setWidget(self.info_content)
         v_props.addWidget(info_scroll, stretch=1)
 
@@ -361,15 +330,14 @@ class KartotekaPanel(QWidget):
         self.btn_gen_consent.setEnabled(False)
         self.btn_gen_consent.clicked.connect(self._generate_consent_doc)
         v_props.addWidget(self.btn_gen_consent)
-        v_props.addSpacing(4)
 
         self.right_stack.addWidget(tab_props_widget)
 
         # Tab 1: Сроки
         tab_deadlines_widget = QWidget()
         v_deadlines = QVBoxLayout(tab_deadlines_widget)
-        v_deadlines.setContentsMargins(0, 4, 0, 8)
-        v_deadlines.setSpacing(10)
+        v_deadlines.setContentsMargins(0, 4, 0, 4)
+        v_deadlines.setSpacing(8)
 
         dl_scroll = QScrollArea()
         dl_scroll.setWidgetResizable(True)
@@ -379,6 +347,7 @@ class KartotekaPanel(QWidget):
         self.deadlines_content.setTextFormat(Qt.RichText)
         self.deadlines_content.setWordWrap(True)
         self.deadlines_content.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.deadlines_content.setContentsMargins(12, 10, 12, 10)
         dl_scroll.setWidget(self.deadlines_content)
         v_deadlines.addWidget(dl_scroll, stretch=1)
 
@@ -390,7 +359,6 @@ class KartotekaPanel(QWidget):
         self.btn_gen_publications.setEnabled(False)
         self.btn_gen_publications.clicked.connect(self._generate_publications_docs)
         v_deadlines.addWidget(self.btn_gen_publications)
-        v_deadlines.addSpacing(4)
 
         self.right_stack.addWidget(tab_deadlines_widget)
 
@@ -399,25 +367,6 @@ class KartotekaPanel(QWidget):
         v_script = QVBoxLayout(tab_script_widget)
         v_script.setContentsMargins(0, 4, 0, 0)
         v_script.setSpacing(8)
-
-        # Переключатель сценария: Первый контакт / Определение суда
-        mode_layout = QHBoxLayout()
-        mode_layout.setSpacing(6)
-
-        self.btn_mode_first = QPushButton("Первый контакт")
-        self.btn_mode_first.setFixedHeight(28)
-        self.btn_mode_first.setCursor(Qt.PointingHandCursor)
-        self.btn_mode_first.clicked.connect(lambda: self._set_script_mode("first"))
-        mode_layout.addWidget(self.btn_mode_first, stretch=1)
-
-        self.btn_mode_court = QPushButton("Определение суда")
-        self.btn_mode_court.setFixedHeight(28)
-        self.btn_mode_court.setCursor(Qt.PointingHandCursor)
-        self.btn_mode_court.clicked.connect(lambda: self._set_script_mode("court"))
-        mode_layout.addWidget(self.btn_mode_court, stretch=1)
-
-        v_script.addLayout(mode_layout)
-        self._update_mode_button_styles()
 
         self.cb_grid_layout = QVBoxLayout()
         self.cb_grid_layout.setSpacing(6)
@@ -648,12 +597,6 @@ class KartotekaPanel(QWidget):
         """
         self.deadlines_content.setText(html)
 
-    def _set_script_mode(self, mode: str):
-        self.script_mode = mode
-        self._update_mode_button_styles()
-        self._rebuild_script_checkboxes()
-        self._update_script_message_text()
-
     def _rebuild_script_checkboxes(self):
         # Очищаем текущие чекбоксы
         while self.cb_grid_layout.count():
@@ -663,9 +606,7 @@ class KartotekaPanel(QWidget):
                 widget.deleteLater()
 
         self.script_checkboxes = []
-        doc_list = FIRST_CONTACT_DOCS if self.script_mode == "first" else COURT_ORDER_DOCS
-
-        for key, label_text, default_checked in doc_list:
+        for key, label_text, default_checked in FIRST_CONTACT_DOCS:
             cb = QCheckBox(label_text)
             cb.setChecked(default_checked)
             cb.setStyleSheet("QCheckBox { font-size: 13px; color: #1E293B; spacing: 8px; }")
@@ -687,9 +628,6 @@ class KartotekaPanel(QWidget):
         else:
             first_name = "Уважаемый клиент"
 
-        case_no = self.selected_debtor.get("case_number", "").strip()
-        mgr_fio = self.settings.manager_fio if hasattr(self.settings, "manager_fio") else "арбитражного управляющего"
-
         needed_docs = []
         has_gosuslugi = False
         for cb, label_text in self.script_checkboxes:
@@ -699,49 +637,23 @@ class KartotekaPanel(QWidget):
                 else:
                     needed_docs.append(label_text)
 
-        if self.script_mode == "court":
-            # Сценарий: Определение суда
-            case_part = f" № {case_no}" if case_no else ""
-            lines = [
-                f"Добрый день, {first_name}!\n",
-                f"Вышло определение суда по вашему делу{case_part}. Суд запросил следующие документы:\n"
-            ]
-            if needed_docs or has_gosuslugi:
-                idx = 1
-                for doc in needed_docs:
-                    lines.append(f"{idx}. {doc};")
-                    idx += 1
-                if has_gosuslugi:
-                    lines.append(f"{idx}. Логин и пароль от госуслуг;")
-                lines.append("")
-                lines.append(
-                    "Пожалуйста, предоставьте эти документы за 5 дней до судебного заседания, "
-                    "чтобы мы успели сформировать позицию и заблаговременно подгрузить их в суд."
-                )
-            else:
-                lines.append("Все запрашиваемые судом документы уже в распоряжении управляющего. Спасибо!\n")
+        lines = [
+            f"{first_name}, здравствуйте! Меня зовут Валерия.\n",
+            "Я буду писать заявление на ваше банкротство.\n",
+            "Контакт передала Ксения.\n",
+        ]
 
-            lines.append("\nЕсли у вас есть вопросы по списку документов — я на связи!")
+        if needed_docs or has_gosuslugi:
+            lines.append("Для написания заявления отправьте пожалуйста фото или скан следующих документов:\n")
+            for doc in needed_docs:
+                lines.append(f"{doc}")
+            lines.append("")
+
+            if has_gosuslugi:
+                lines.append("Логин и пароль от госуслуг")
+                lines.append("Все остальные справки и документы будут скачиваться оттуда")
         else:
-            # Сценарий: Первый контакт с клиентом
-            lines = [
-                f"Здравствуйте, {first_name}!\n",
-                f"Я помощник финансового управляющего ({mgr_fio}). "
-                "Мы начинаем процедуру подготовки документов к вашему банкротству.\n"
-            ]
-            if needed_docs or has_gosuslugi:
-                lines.append("Пожалуйста, направьте мне качественные фото или сканы следующих документов:")
-                for i, doc in enumerate(needed_docs, 1):
-                    lines.append(f"{i}. {doc};")
-                lines.append("")
-
-                if has_gosuslugi:
-                    lines.append("Также необходимы:")
-                    lines.append("• Логин и пароль от госуслуг (все остальные справки и документы будут скачиваться оттуда).\n")
-            else:
-                lines.append("Все основные документы по списку уже получены. Спасибо!\n")
-
-            lines.append("Если у вас возникнут вопросы по списку документов — я на связи!")
+            lines.append("Все основные документы по списку уже получены. Спасибо!")
 
         self.script_text_edit.setPlainText("\n".join(lines))
 
@@ -772,11 +684,17 @@ class KartotekaPanel(QWidget):
         # Файл: "Заявка АУ {Фамилия и инициалы фин управляющего}_{Фамилия и инициалы фин должника}.docx"
         filename = f"Заявка АУ {short_mgr}_{short_debtor}.docx"
         out_path = os.path.join(base_out, filename)
+        pdf_path = os.path.splitext(out_path)[0] + ".pdf"
 
         try:
             generate_consent_doc(self.selected_debtor, self.settings, out_path)
+            try:
+                convert_word_to_pdf(out_path, pdf_path)
+            except Exception as e_pdf:
+                print(f"[Kartoteka] Ошибка конвертации согласия в PDF: {e_pdf}")
 
-            dlg = InquirySuccessDialog(output_dir=base_out, inquiries_count=1, parent=self)
+            count = 2 if os.path.exists(pdf_path) else 1
+            dlg = InquirySuccessDialog(output_dir=base_out, inquiries_count=count, parent=self)
             dlg.setWindowTitle("Согласие сформировано - Арбитрум")
             dlg.exec()
         except Exception as e:
@@ -800,12 +718,18 @@ class KartotekaPanel(QWidget):
 
         kom_path = os.path.join(target_dir, f"Заявка_Коммерсантъ_{safe_fio}.docx")
         efrsb_path = os.path.join(target_dir, f"Сообщение_ЕФРСБ_{safe_fio}.docx")
+        efrsb_pdf_path = os.path.join(target_dir, f"Сообщение_ЕФРСБ_{safe_fio}.pdf")
 
         try:
             generate_kommersant_doc(self.selected_debtor, self.settings, kom_path)
             generate_efrsb_doc(self.selected_debtor, self.settings, efrsb_path)
+            try:
+                convert_word_to_pdf(efrsb_path, efrsb_pdf_path)
+            except Exception as e_pdf:
+                print(f"[Kartoteka] Ошибка конвертации ЕФРСБ в PDF: {e_pdf}")
 
-            dlg = InquirySuccessDialog(output_dir=target_dir, inquiries_count=2, parent=self)
+            count = 3 if os.path.exists(efrsb_pdf_path) else 2
+            dlg = InquirySuccessDialog(output_dir=target_dir, inquiries_count=count, parent=self)
             dlg.setWindowTitle("Письма сформированы - Арбитрум")
             dlg.exec()
         except Exception as e:
@@ -909,13 +833,33 @@ class KartotekaPanel(QWidget):
     def _import_from_text_file(self):
         fpath, _ = QFileDialog.getOpenFileName(
             self,
-            "Выберите текстовый файл для импорта",
+            "Выберите файл для импорта в картотеку",
             "",
-            "Текстовые файлы (*.txt);;Все файлы (*.*)"
+            "Все поддерживаемые форматы (*.txt *.db *.sqlite *.zip);;Текстовые файлы (*.txt);;Базы данных и архивы (*.db *.sqlite *.zip);;Все файлы (*.*)"
         )
         if not fpath:
             return
 
+        ext = os.path.splitext(fpath)[1].lower()
+
+        # Если это файл базы данных SQLite или zip-архив с базой
+        if ext in [".db", ".sqlite", ".zip"]:
+            try:
+                res = self.db_manager.import_from_archive_or_db(fpath)
+                self.refresh_table()
+                msg = (
+                    f"Импорт и объединение данных завершены успешно!\n\n"
+                    f"• Добавлено новых должников: {res['added']}\n"
+                    f"• Дополнено существующих карточек: {res['updated']}\n"
+                    f"• Пропущено полных дубликатов: {res['skipped']}\n"
+                    f"• Всего обработано из файла: {res['total_source']}"
+                )
+                QMessageBox.information(self, "Импорт базы данных", msg)
+            except Exception as e:
+                QMessageBox.critical(self, "Ошибка импорта", f"Не удалось импортировать файл базы данных:\n{e}")
+            return
+
+        # Иначе текстовый файл
         try:
             with open(fpath, "r", encoding="utf-8") as f:
                 content = f.read()

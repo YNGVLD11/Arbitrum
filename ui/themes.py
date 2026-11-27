@@ -250,9 +250,9 @@ QGroupBox {{
     background-color: #FFFFFF;
     border: 1px solid #BAE6FD;
     border-radius: 10px;
-    margin-top: 16px;
-    padding-top: 0px;
-    padding-bottom: 0px;
+    margin-top: 24px;
+    padding-top: 10px;
+    padding-bottom: 4px;
     padding-left: 0px;
     padding-right: 0px;
     font-weight: 600;
@@ -263,9 +263,9 @@ QGroupBox {{
 QGroupBox::title {{
     subcontrol-origin: margin;
     subcontrol-position: top left;
-    left: 14px;
-    padding: 0 6px;
-    background-color: #F0F9FF;
+    left: 0px;
+    padding: 0 4px 0 0;
+    background-color: transparent;
     color: #0369A1;
 }}
 
@@ -307,7 +307,7 @@ QPushButton#settingsButton:hover {{
 }}
 
 /* Standard Buttons */
-QPushButton {{
+QPushButton, QPushButton#secondaryButton {{
     background-color: #FFFFFF;
     color: #0F172A;
     border: 1px solid #CBD5E1;
@@ -318,16 +318,16 @@ QPushButton {{
     font-size: 13px;
 }}
 
-QPushButton:hover {{
+QPushButton:hover, QPushButton#secondaryButton:hover {{
     background-color: #F1F5F9;
     border-color: #64748B;
 }}
 
-QPushButton:pressed {{
+QPushButton:pressed, QPushButton#secondaryButton:pressed {{
     background-color: #E2E8F0;
 }}
 
-QPushButton:disabled {{
+QPushButton:disabled, QPushButton#secondaryButton:disabled {{
     background-color: #F8FAFC;
     color: #94A3B8;
     border-color: #E2E8F0;
@@ -981,9 +981,9 @@ QGroupBox {{
     background-color: #FFFFFF;
     border: 1px solid #FFCCD5;
     border-radius: 10px;
-    margin-top: 16px;
-    padding-top: 0px;
-    padding-bottom: 0px;
+    margin-top: 24px;
+    padding-top: 10px;
+    padding-bottom: 4px;
     padding-left: 0px;
     padding-right: 0px;
     font-weight: 600;
@@ -994,9 +994,9 @@ QGroupBox {{
 QGroupBox::title {{
     subcontrol-origin: margin;
     subcontrol-position: top left;
-    left: 14px;
-    padding: 0 6px;
-    background-color: #FFF0F5;
+    left: 0px;
+    padding: 0 4px 0 0;
+    background-color: transparent;
     color: #800F2F;
 }}
 
@@ -1038,7 +1038,7 @@ QPushButton#settingsButton:hover {{
 }}
 
 /* Buttons */
-QPushButton {{
+QPushButton, QPushButton#secondaryButton {{
     background-color: rgba(255, 255, 255, 0.95);
     color: #6A1B4D;
     border: 1px solid #FFCCD5;
@@ -1049,17 +1049,17 @@ QPushButton {{
     font-size: 13px;
 }}
 
-QPushButton:hover {{
+QPushButton:hover, QPushButton#secondaryButton:hover {{
     background-color: #FFF0F3;
     border-color: #FF758F;
     color: #A4133C;
 }}
 
-QPushButton:pressed {{
+QPushButton:pressed, QPushButton#secondaryButton:pressed {{
     background-color: #FFE5EC;
 }}
 
-QPushButton:disabled {{
+QPushButton:disabled, QPushButton#secondaryButton:disabled {{
     background-color: rgba(255, 255, 255, 0.6);
     color: #C9A2B5;
     border-color: #FCE7F0;
@@ -1718,9 +1718,9 @@ QGroupBox {{
     background-color: #FFFFFF;
     border: 1px solid #D7C7B7;
     border-radius: 10px;
-    margin-top: 16px;
-    padding-top: 0px;
-    padding-bottom: 0px;
+    margin-top: 24px;
+    padding-top: 10px;
+    padding-bottom: 4px;
     padding-left: 0px;
     padding-right: 0px;
     font-weight: 600;
@@ -1731,9 +1731,9 @@ QGroupBox {{
 QGroupBox::title {{
     subcontrol-origin: margin;
     subcontrol-position: top left;
-    left: 14px;
-    padding: 0 6px;
-    background-color: #F7F1EB;
+    left: 0px;
+    padding: 0 4px 0 0;
+    background-color: transparent;
     color: #6F4528;
 }}
 
@@ -1775,7 +1775,7 @@ QPushButton#settingsButton:hover {{
 }}
 
 /* Standard Buttons */
-QPushButton {{
+QPushButton, QPushButton#secondaryButton {{
     background-color: #FFFFFF;
     color: #2D241E;
     border: 1px solid #D7C7B7;
@@ -1786,16 +1786,16 @@ QPushButton {{
     font-size: 13px;
 }}
 
-QPushButton:hover {{
+QPushButton:hover, QPushButton#secondaryButton:hover {{
     background-color: #F4EDE4;
     border-color: #7A6453;
 }}
 
-QPushButton:pressed {{
+QPushButton:pressed, QPushButton#secondaryButton:pressed {{
     background-color: #EAE0D5;
 }}
 
-QPushButton:disabled {{
+QPushButton:disabled, QPushButton#secondaryButton:disabled {{
     background-color: #FBF8F5;
     color: #9C8573;
     border-color: #EAE0D5;
@@ -2447,9 +2447,9 @@ QGroupBox {{
     background-color: #FFFFFF;
     border: 1px solid #DDD6FE;
     border-radius: 10px;
-    margin-top: 16px;
-    padding-top: 0px;
-    padding-bottom: 0px;
+    margin-top: 24px;
+    padding-top: 10px;
+    padding-bottom: 4px;
     padding-left: 0px;
     padding-right: 0px;
     font-weight: 600;
@@ -2460,9 +2460,9 @@ QGroupBox {{
 QGroupBox::title {{
     subcontrol-origin: margin;
     subcontrol-position: top left;
-    left: 14px;
-    padding: 0 6px;
-    background-color: #F5F3FF;
+    left: 0px;
+    padding: 0 4px 0 0;
+    background-color: transparent;
     color: #6D28D9;
 }}
 
@@ -2504,7 +2504,7 @@ QPushButton#settingsButton:hover {{
 }}
 
 /* Standard Buttons */
-QPushButton {{
+QPushButton, QPushButton#secondaryButton {{
     background-color: #FFFFFF;
     color: #1E1B4B;
     border: 1px solid #DDD6FE;
@@ -2515,16 +2515,16 @@ QPushButton {{
     font-size: 13px;
 }}
 
-QPushButton:hover {{
+QPushButton:hover, QPushButton#secondaryButton:hover {{
     background-color: #F5F3FF;
     border-color: #6D28D9;
 }}
 
-QPushButton:pressed {{
+QPushButton:pressed, QPushButton#secondaryButton:pressed {{
     background-color: #EDE9FE;
 }}
 
-QPushButton:disabled {{
+QPushButton:disabled, QPushButton#secondaryButton:disabled {{
     background-color: #FAF8FF;
     color: #8B5CF6;
     border-color: #EDE9FE;

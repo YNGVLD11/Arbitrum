@@ -315,7 +315,7 @@ class FileDropListWidget(QListWidget):
 
         # Centered placeholder label when list is empty
         self.placeholder_lbl = QLabel(
-            "📁 Перетащите файлы сюда\nили нажмите кнопку «Добавить»",
+            "Перетащите файлы сюда\nили нажмите кнопку «Добавить»",
             self
         )
         self.placeholder_lbl.setAlignment(Qt.AlignCenter)
@@ -457,7 +457,8 @@ class FileListPanel(QFrame):
         btn_layout.setContentsMargins(0, 0, 0, 0)
 
         # "Добавить"
-        self.add_btn = QPushButton("➕ Добавить")
+        self.add_btn = QPushButton("Добавить")
+        self.add_btn.setObjectName("secondaryButton")
         self.add_btn.setFixedHeight(34)
         self.add_btn.clicked.connect(self._open_file_dialog)
         btn_layout.addWidget(self.add_btn)

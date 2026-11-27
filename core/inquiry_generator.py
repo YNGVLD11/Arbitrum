@@ -28,6 +28,7 @@ TEMPLATES_CONFIG = [
     {"id": "sfr", "name": "СФР", "file": "в_СФР_РИ.docx"},
     {"id": "debtor_spouse", "name": "Должнику / Супругу", "file": "Должнику_супругу_РИ.docx"},
     {"id": "uvm", "name": "УВМ", "file": "запрос в УВМ.docx"},
+    {"id": "dzio", "name": "ДЗИО", "file": "в_ДЗИО_РИ.docx"},
 ]
 
 MONTHS_RU = {
@@ -475,6 +476,7 @@ def generate_single_inquiry(
         "{{SPOUSE_PASS_CODE}}": spouse_pass_c,
         "{{EMPLOYER_INFO}}": employer_info_str,
         "{{CREDITORS_INFO}}": creditors_info_str,
+        "{{DZIO_NAME_AND_ADDRESS}}": region_info.get("dzio", "Департамент имущества и земельных отношений Новосибирской области\n630007, Новосибирская область, г. Новосибирск, Красный пр-кт, д. 18"),
     }
 
     # 5. Process all Document Paragraphs

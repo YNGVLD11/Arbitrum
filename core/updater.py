@@ -9,7 +9,7 @@ import tempfile
 from PySide6.QtCore import QObject, Signal, QThread
 from PySide6.QtWidgets import QApplication
 
-CURRENT_VERSION = "v1.4.4"
+CURRENT_VERSION = "v1.4.5"
 GITHUB_REPO = "YNGVLD11/Arbitrum"
 LATEST_RELEASE_WEB_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -166,8 +166,9 @@ class DownloadUpdateThread(QThread):
 
 def restart_and_replace(new_exe_path: str):
     """
-    Запускает полностью отвязанный фоновый батник для безопасной замены exe и перезапуска.
-    Исключает ошибку 'Failed to remove temporary directory'.
+    Запускает полностью бесшумный фоновый скрипт Windows Script Host (wscript.exe)
+    для безопасной замены exe и перезапуска.
+    Исключает появление любых черных окон консоли (cmd/find).
     """
     if not getattr(sys, "frozen", False):
         raise RuntimeError("Приложение запущено из исходного кода Python. Обновление .exe доступно только для скомпилированной версии.")
@@ -175,50 +176,56 @@ def restart_and_replace(new_exe_path: str):
     current_exe = os.path.abspath(sys.argv[0])
     current_pid = os.getpid()
 
-    # Скрипт ждёт полного завершения процесса PID, снимает любые оставшиеся блокировки,
-    # заменяет файл и запускает обновлённое приложение.
-    bat_content = f"""@echo off
-chcp 65001 > nul
+    # VBScript выполняется через wscript.exe, у которого принципиально нет консоли.
+    # Он ждет завершения процесса по WMI, заменяет файл с проверкой и запускает обновленный .exe.
+    vbs_content = f'''Set WshShell = CreateObject("WScript.Shell")
+Set objWMIService = GetObject("winmgmts:\\\\.\\root\\cimv2")
 
-:wait_process
-ping 127.0.0.1 -n 2 > nul
-taskkill /PID {current_pid} /F > nul 2>&1
-tasklist /nh /fi "pid eq {current_pid}" 2>nul | findstr "{current_pid}" > nul
-if not errorlevel 1 (
-    goto wait_process
-)
-ping 127.0.0.1 -n 2 > nul
+Do
+    Set colProcesses = objWMIService.ExecQuery("Select * from Win32_Process Where ProcessId = {current_pid}")
+    If colProcesses.Count = 0 Then Exit Do
+    WScript.Sleep 300
+Loop
 
-:retry_replace
-move /y "{new_exe_path}" "{current_exe}" >nul 2>&1
-if errorlevel 1 (
-    ping 127.0.0.1 -n 2 > nul
-    goto retry_replace
-)
-ping 127.0.0.1 -n 2 > nul
+WScript.Sleep 600
 
-start "" "{current_exe}"
-del "%~f0" >nul 2>&1
-exit
-"""
+Set fso = CreateObject("Scripting.FileSystemObject")
+attempts = 0
+Do While attempts < 25
+    On Error Resume Next
+    fso.CopyFile "{new_exe_path}", "{current_exe}", True
+    If Err.Number = 0 Then
+        fso.DeleteFile "{new_exe_path}", True
+        Exit Do
+    End If
+    On Error GoTo 0
+    WScript.Sleep 400
+    attempts = attempts + 1
+Loop
+
+WScript.Sleep 300
+WshShell.Run """" & "{current_exe}" & """", 1, False
+
+On Error Resume Next
+fso.DeleteFile WScript.ScriptFullName, True
+'''
     temp_dir = tempfile.gettempdir()
-    bat_path = os.path.join(temp_dir, "arbitrum_updater.bat")
-    with open(bat_path, "w", encoding="cp866") as f:
-        f.write(bat_content)
+    vbs_path = os.path.join(temp_dir, "arbitrum_updater.vbs")
+    with open(vbs_path, "w", encoding="cp1251") as f:
+        f.write(vbs_content)
 
-    # Запускаем батник с отвязкой дескрипторов (DETACHED_PROCESS / close_fds)
+    # 0x00000008 = DETACHED_PROCESS, 0x08000000 = CREATE_NO_WINDOW
     flags = 0
     if os.name == "nt":
-        # 0x00000008 = DETACHED_PROCESS, 0x08000000 = CREATE_NO_WINDOW
         flags = 0x08000008
 
     subprocess.Popen(
-        ["cmd.exe", "/c", bat_path],
+        ["wscript.exe", vbs_path],
         creationflags=flags,
         close_fds=True
     )
 
-    # Корректно закрываем Qt приложение без паники бутлоадера
+    # Корректно закрываем Qt приложение
     app = QApplication.instance()
     if app:
         app.closeAllWindows()

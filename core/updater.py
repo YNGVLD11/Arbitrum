@@ -9,7 +9,7 @@ import tempfile
 from PySide6.QtCore import QObject, Signal, QThread
 from PySide6.QtWidgets import QApplication
 
-CURRENT_VERSION = "v1.4.3"
+CURRENT_VERSION = "v1.4.4"
 GITHUB_REPO = "YNGVLD11/Arbitrum"
 LATEST_RELEASE_WEB_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -179,23 +179,23 @@ def restart_and_replace(new_exe_path: str):
     # заменяет файл и запускает обновлённое приложение.
     bat_content = f"""@echo off
 chcp 65001 > nul
-setlocal enabledelayedexpansion
 
 :wait_process
-timeout /t 1 /nobreak > nul
-tasklist /fi "pid eq {current_pid}" 2>nul | find "{current_pid}" >nul
+ping 127.0.0.1 -n 2 > nul
+taskkill /PID {current_pid} /F > nul 2>&1
+tasklist /nh /fi "pid eq {current_pid}" 2>nul | findstr "{current_pid}" > nul
 if not errorlevel 1 (
     goto wait_process
 )
-timeout /t 1 /nobreak > nul
+ping 127.0.0.1 -n 2 > nul
 
 :retry_replace
 move /y "{new_exe_path}" "{current_exe}" >nul 2>&1
 if errorlevel 1 (
-    timeout /t 1 /nobreak > nul
+    ping 127.0.0.1 -n 2 > nul
     goto retry_replace
 )
-timeout /t 1 /nobreak > nul
+ping 127.0.0.1 -n 2 > nul
 
 start "" "{current_exe}"
 del "%~f0" >nul 2>&1

@@ -1,48 +1,81 @@
 import os
 import sys
+import re
+import html
 import json
 import urllib.request
 import subprocess
 import tempfile
 from PySide6.QtCore import QObject, Signal, QThread
+from PySide6.QtWidgets import QApplication
 
-CURRENT_VERSION = "v1.4.1"
+CURRENT_VERSION = "v1.4.2"
 GITHUB_REPO = "YNGVLD11/Arbitrum"
+LATEST_RELEASE_WEB_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 
 class CheckUpdateThread(QThread):
-    """Фоновый поток проверки наличия обновления на GitHub."""
+    """
+    Фоновый поток проверки наличия обновления на GitHub.
+    Использует прямой веб-редирект releases/latest без лимитов GitHub API (403 rate limit).
+    При необходимости делает fallback на API.
+    """
     check_finished = Signal(bool, str, str, str)  # has_update, new_version, release_notes, download_url
     check_failed = Signal(str)
 
     def run(self):
         try:
-            req = urllib.request.Request(API_URL, headers={"User-Agent": "Arbitrum-App"})
-            with urllib.request.urlopen(req, timeout=5) as response:
-                if response.status != 200:
-                    self.check_failed.emit(f"Сервер вернул код {response.status}")
-                    return
-                data = json.loads(response.read().decode("utf-8"))
-
-            tag_name = data.get("tag_name", "").strip()
-            body = data.get("body", "Описание обновления отсутствует.")
-
-            # Search for attached .exe asset
+            tag_name = ""
+            body = ""
             download_url = ""
-            for asset in data.get("assets", []):
-                name = asset.get("name", "").lower()
-                if name.endswith(".exe"):
-                    download_url = asset.get("browser_download_url", "")
-                    break
 
-            # Compare versions
+            # 1. Попытка через веб-страницу релиза (нет лимитов по IP)
+            try:
+                req = urllib.request.Request(
+                    LATEST_RELEASE_WEB_URL,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                )
+                with urllib.request.urlopen(req, timeout=8) as response:
+                    final_url = response.geturl()
+                    tag_candidate = final_url.rstrip("/").split("/")[-1].strip()
+                    if tag_candidate and tag_candidate != "releases" and tag_candidate != "latest":
+                        tag_name = tag_candidate
+                        download_url = f"https://github.com/{GITHUB_REPO}/releases/download/{tag_name}/Arbitrum.exe"
+                        page_html = response.read().decode("utf-8", errors="ignore")
+                        m = re.search(r'class="markdown-body[^>]*>(.*?)</div>', page_html, re.DOTALL)
+                        if m:
+                            clean = re.sub(r'<[^>]+>', '', m.group(1))
+                            body = html.unescape(clean).strip()
+            except Exception:
+                tag_name = ""
+
+            # 2. Fallback через GitHub REST API, если веб-запрос не сработал
+            if not tag_name:
+                api_req = urllib.request.Request(API_URL, headers={"User-Agent": "Arbitrum-App"})
+                with urllib.request.urlopen(api_req, timeout=6) as response:
+                    if response.status == 200:
+                        data = json.loads(response.read().decode("utf-8"))
+                        tag_name = data.get("tag_name", "").strip()
+                        body = data.get("body", "Описание обновления отсутствует.")
+                        for asset in data.get("assets", []):
+                            if asset.get("name", "").lower().endswith(".exe"):
+                                download_url = asset.get("browser_download_url", "")
+                                break
+
+            if not tag_name:
+                self.check_failed.emit("Не удалось получить информацию о последней версии.")
+                return
+
+            if not body:
+                body = "Доступна новая версия программы."
+
+            # Сравнение версий
             cur_clean = CURRENT_VERSION.lstrip("v").strip()
             new_clean = tag_name.lstrip("v").strip()
 
             has_update = False
             if new_clean and new_clean != cur_clean:
-                # Basic tuple comparison: 1.3.0 > 1.2.0
                 try:
                     cur_parts = [int(p) for p in cur_clean.split(".")]
                     new_parts = [int(p) for p in new_clean.split(".")]
@@ -58,7 +91,7 @@ class CheckUpdateThread(QThread):
 
 
 class DownloadUpdateThread(QThread):
-    """Фоновый поток скачивания нового исполняемого файла с прогрессом."""
+    """Фоновый поток скачивания нового исполняемого файла с прогрессом и увеличенным буфером."""
     progress = Signal(int)  # 0 to 100
     download_finished = Signal(str)  # temp_file_path
     download_failed = Signal(str)
@@ -71,12 +104,20 @@ class DownloadUpdateThread(QThread):
         try:
             temp_dir = tempfile.gettempdir()
             target_path = os.path.join(temp_dir, "arbitrum_new_version.exe")
+            if os.path.exists(target_path):
+                try:
+                    os.remove(target_path)
+                except Exception:
+                    pass
 
-            req = urllib.request.Request(self.download_url, headers={"User-Agent": "Arbitrum-App"})
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            req = urllib.request.Request(
+                self.download_url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            )
+            with urllib.request.urlopen(req, timeout=60) as resp:
                 total_size = int(resp.headers.get("content-length", 0))
                 downloaded = 0
-                block_size = 65536
+                block_size = 524288  # 512 КБ для быстрой потоковой загрузки
 
                 with open(target_path, "wb") as f:
                     while True:
@@ -87,7 +128,11 @@ class DownloadUpdateThread(QThread):
                         f.write(buffer)
                         if total_size > 0:
                             percent = int((downloaded / total_size) * 100)
-                            self.progress.emit(percent)
+                            self.progress.emit(min(percent, 99))
+
+            # Проверка целостности файла
+            if total_size > 0 and downloaded < total_size:
+                raise RuntimeError(f"Файл загружен не полностью ({downloaded} из {total_size} байт).")
 
             self.progress.emit(100)
             self.download_finished.emit(target_path)
@@ -97,43 +142,60 @@ class DownloadUpdateThread(QThread):
 
 def restart_and_replace(new_exe_path: str):
     """
-    Запускает фоновый батник для замены старого exe на новый и перезапуска.
-    Работает как в скомпилированном виде, так и корректно сообщает в dev-режиме.
+    Запускает полностью отвязанный фоновый батник для безопасной замены exe и перезапуска.
+    Исключает ошибку 'Failed to remove temporary directory'.
     """
     if not getattr(sys, "frozen", False):
-        # We are running from source (.py), not frozen exe
         raise RuntimeError("Приложение запущено из исходного кода Python. Обновление .exe доступно только для скомпилированной версии.")
 
     current_exe = os.path.abspath(sys.argv[0])
+    current_pid = os.getpid()
+
+    # Скрипт ждёт полного завершения процесса PID, снимает любые оставшиеся блокировки,
+    # заменяет файл и запускает обновлённое приложение.
     bat_content = f"""@echo off
 chcp 65001 > nul
-echo Ожидание завершения работы приложения...
-:wait_loop
-tasklist /fi "pid eq {os.getpid()}" 2>nul | find "{os.getpid()}" >nul
+setlocal enabledelayedexpansion
+
+:wait_process
+timeout /t 1 /nobreak > nul
+tasklist /fi "pid eq {current_pid}" 2>nul | find "{current_pid}" >nul
 if not errorlevel 1 (
-    timeout /t 1 /nobreak > nul
-    goto wait_loop
+    goto wait_process
 )
 timeout /t 1 /nobreak > nul
 
-:retry_move
+:retry_replace
 move /y "{new_exe_path}" "{current_exe}" >nul 2>&1
 if errorlevel 1 (
     timeout /t 1 /nobreak > nul
-    goto retry_move
+    goto retry_replace
 )
 
-echo Запуск обновленного приложения...
 start "" "{current_exe}"
-del "%~f0"
+del "%~f0" >nul 2>&1
+exit
 """
     temp_dir = tempfile.gettempdir()
     bat_path = os.path.join(temp_dir, "arbitrum_updater.bat")
     with open(bat_path, "w", encoding="cp866") as f:
         f.write(bat_content)
 
+    # Запускаем батник с отвязкой дескрипторов (DETACHED_PROCESS / close_fds)
+    flags = 0
+    if os.name == "nt":
+        # 0x00000008 = DETACHED_PROCESS, 0x08000000 = CREATE_NO_WINDOW
+        flags = 0x08000008
+
     subprocess.Popen(
         ["cmd.exe", "/c", bat_path],
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        creationflags=flags,
+        close_fds=True
     )
+
+    # Корректно закрываем Qt приложение без паники бутлоадера
+    app = QApplication.instance()
+    if app:
+        app.closeAllWindows()
+        app.quit()
     sys.exit(0)

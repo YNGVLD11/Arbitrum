@@ -38,6 +38,35 @@ def get_default_database_path() -> str:
     return os.path.normpath(os.path.join(data_dir, "arbitrum.db"))
 
 
+def get_regions_json_path() -> str:
+    """
+    Определяет постоянный путь к справочнику регионов regions.json.
+    В скомпилированном виде сохраняется в %APPDATA%/Arbitrum/data/regions.json,
+    чтобы пользовательские правки адресов органов и добавленные города сохранялись навсегда.
+    Если файл в AppData еще не существует, копирует начальный шаблон из assets/regions.json.
+    """
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    bundled_regions = os.path.join(root_dir, "assets", "regions.json")
+
+    if getattr(sys, "frozen", False):
+        appdata = os.environ.get("APPDATA")
+        if not appdata:
+            appdata = os.path.expanduser("~")
+        user_data_dir = os.path.join(appdata, "Arbitrum", "data")
+        os.makedirs(user_data_dir, exist_ok=True)
+        target_path = os.path.normpath(os.path.join(user_data_dir, "regions.json"))
+
+        # Если в AppData файла еще нет, копируем дефолтный из сборки
+        if not os.path.exists(target_path) and os.path.exists(bundled_regions):
+            try:
+                shutil.copyfile(bundled_regions, target_path)
+            except Exception:
+                return bundled_regions
+        return target_path
+    else:
+        return bundled_regions
+
+
 class DatabaseManager:
     """
     Управление локальной реляционной базой данных SQLite для хранения картотеки должников.

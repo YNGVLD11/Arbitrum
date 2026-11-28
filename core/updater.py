@@ -9,7 +9,7 @@ import tempfile
 from PySide6.QtCore import QObject, Signal, QThread
 from PySide6.QtWidgets import QApplication
 
-CURRENT_VERSION = "v1.4.7"
+CURRENT_VERSION = "v1.5.0"
 GITHUB_REPO = "YNGVLD11/Arbitrum"
 LATEST_RELEASE_WEB_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -41,7 +41,8 @@ class CheckUpdateThread(QThread):
                     tag_candidate = final_url.rstrip("/").split("/")[-1].strip()
                     if tag_candidate and tag_candidate != "releases" and tag_candidate != "latest":
                         tag_name = tag_candidate
-                        download_url = f"https://github.com/{GITHUB_REPO}/releases/download/{tag_name}/Arbitrum.exe"
+                        # Приоритетно ищем инсталлятор ArbitrumSetup.exe
+                        download_url = f"https://github.com/{GITHUB_REPO}/releases/download/{tag_name}/ArbitrumSetup.exe"
                         page_html = response.read().decode("utf-8", errors="ignore")
                         m = re.search(r'class="markdown-body[^>]*>(.*?)</div>', page_html, re.DOTALL)
                         if m:
@@ -59,9 +60,12 @@ class CheckUpdateThread(QThread):
                         tag_name = data.get("tag_name", "").strip()
                         body = data.get("body", "Описание обновления отсутствует.")
                         for asset in data.get("assets", []):
-                            if asset.get("name", "").lower().endswith(".exe"):
+                            aname = asset.get("name", "").lower()
+                            if aname == "arbitrumsetup.exe" or "setup" in aname:
                                 download_url = asset.get("browser_download_url", "")
                                 break
+                            elif aname.endswith(".exe") and not download_url:
+                                download_url = asset.get("browser_download_url", "")
 
             if not tag_name:
                 self.check_failed.emit("Не удалось получить информацию о последней версии.")
@@ -166,64 +170,58 @@ class DownloadUpdateThread(QThread):
 
 def restart_and_replace(new_exe_path: str):
     """
-    Запускает нативный скомпилированный Windows-помощник (updater.exe).
-    Он отвязан от родительского процесса, работает без окон (target: winexe),
-    ждет завершения основного процесса, снимает метку Zone.Identifier и перезапускает exe.
+    Применяет скачанное обновление:
+    1. Если скачан установщик (ArbitrumSetup.exe) — запускает его в абсолютно тихом
+       фоновом режиме (/VERYSILENT /SUPPRESSMSGBOXES /NORESTART), который сам штатно
+       обновляет файлы и запускает приложение.
+    2. Если скачан бинарник exe — использует нативный updater.exe.
     """
     if not getattr(sys, "frozen", False):
-        raise RuntimeError("Приложение запущено из исходного кода Python. Обновление .exe доступно только для скомпилированной версии.")
+        raise RuntimeError("Приложение запущено из исходного кода Python. Обновление доступно только для скомпилированной версии.")
 
     current_exe = os.path.abspath(sys.argv[0])
     current_pid = os.getpid()
 
-    # Извлекаем встроенный updater.exe из пакета или assets во временную папку
-    temp_dir = tempfile.gettempdir()
-    updater_exe = os.path.join(temp_dir, "arbitrum_updater_native.exe")
+    # Снимаем метку Zone.Identifier (Mark-of-the-Web)
+    try:
+        import ctypes
+        ctypes.windll.kernel32.DeleteFileW(new_exe_path + ":Zone.Identifier")
+    except Exception:
+        pass
 
-    # Ищем updater.exe в ресурсах PyInstaller или локальной папке assets
-    base_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    source_updater = os.path.join(base_dir, "assets", "updater.exe")
+    # Проверяем, является ли файл инсталлятором Inno Setup
+    is_installer = "setup" in os.path.basename(new_exe_path).lower()
 
-    if os.path.exists(source_updater):
-        import shutil
-        shutil.copyfile(source_updater, updater_exe)
+    if is_installer:
+        # Запускаем Inno Setup инсталлятор в тихом режиме
+        # /VERYSILENT — без окон мастера
+        # /SUPPRESSMSGBOXES — без всплывающих диалогов
+        # /NORESTART — без перезагрузки системы
+        flags = 0x08000008 if os.name == "nt" else 0  # DETACHED_PROCESS | CREATE_NO_WINDOW
+        subprocess.Popen(
+            [new_exe_path, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
+            creationflags=flags,
+            close_fds=True
+        )
     else:
-        # Fallback: если файла нет в assets, компилируем его на лету через csc.exe
-        csc_path = r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-        if os.path.exists(csc_path):
-            src_file = os.path.join(temp_dir, "Updater.cs")
-            with open(src_file, "w", encoding="utf-8") as f:
-                f.write("""using System; using System.Diagnostics; using System.IO; using System.Runtime.InteropServices; using System.Threading;
-namespace U { class P {
-    [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern bool DeleteFile(string n);
-    static void Main(string[] a) {
-        if (a.Length < 3) return;
-        int pid; int.TryParse(a[0], out pid); string n = a[1], c = a[2];
-        if (pid > 0) { try { Process p = Process.GetProcessById(pid); if (!p.HasExited) p.WaitForExit(10000); } catch {} }
-        Thread.Sleep(800);
-        try { DeleteFile(n + ":Zone.Identifier"); } catch {}
-        for (int i = 0; i < 30; i++) { try { File.Copy(n, c, true); break; } catch { Thread.Sleep(300); } }
-        try { if (File.Exists(n)) File.Delete(n); } catch {}
-        try { DeleteFile(c + ":Zone.Identifier"); } catch {}
-        Thread.Sleep(500);
-        try { ProcessStartInfo psi = new ProcessStartInfo(c); psi.WorkingDirectory = Path.GetDirectoryName(c); psi.UseShellExecute = true; Process.Start(psi); } catch {}
-    }
-}}""")
-            subprocess.run([csc_path, "/target:winexe", "/optimize+", f"/out:{updater_exe}", src_file], capture_output=True)
+        # Нативный C# updater
+        temp_dir = tempfile.gettempdir()
+        updater_exe = os.path.join(temp_dir, "arbitrum_updater_native.exe")
+        base_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        source_updater = os.path.join(base_dir, "assets", "updater.exe")
 
-    # Запускаем нативный updater.exe
-    flags = 0
-    if os.name == "nt":
-        # 0x08000008 = DETACHED_PROCESS | CREATE_NO_WINDOW
-        flags = 0x08000008
+        if os.path.exists(source_updater):
+            import shutil
+            shutil.copyfile(source_updater, updater_exe)
 
-    subprocess.Popen(
-        [updater_exe, str(current_pid), new_exe_path, current_exe],
-        creationflags=flags,
-        close_fds=True
-    )
+        flags = 0x08000008 if os.name == "nt" else 0
+        subprocess.Popen(
+            [updater_exe, str(current_pid), new_exe_path, current_exe],
+            creationflags=flags,
+            close_fds=True
+        )
 
-    # Корректно закрываем Qt приложение
+    # Корректно закрываем приложение
     app = QApplication.instance()
     if app:
         app.closeAllWindows()

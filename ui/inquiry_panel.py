@@ -594,11 +594,11 @@ class InquiryGeneratorPanel(QWidget):
         return line_edit
 
     def _setup_address_completer(self, line_edit: QLineEdit):
-        """Sets up address auto-completion with region and city prefixes from assets/regions.json."""
+        """Sets up address auto-completion with region and city prefixes from regions.json."""
         if not hasattr(self, "_cached_address_prefixes"):
             prefixes = []
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            json_path = os.path.join(base_dir, "assets", "regions.json")
+            from core.database import get_regions_json_path
+            json_path = get_regions_json_path()
             if os.path.exists(json_path):
                 try:
                     with open(json_path, "r", encoding="utf-8") as f:

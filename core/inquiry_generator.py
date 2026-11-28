@@ -145,13 +145,13 @@ def replace_tokens_in_cell(cell, tag_map: Dict[str, str], font_name: str = "Time
 _REGIONS_CACHE = None
 
 def get_regions_dict() -> dict:
-    """Loads and caches the regions database from assets/regions.json."""
+    """Loads and caches the regions database from regions.json (AppData or assets)."""
     global _REGIONS_CACHE
     if _REGIONS_CACHE is not None:
         return _REGIONS_CACHE
 
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    json_path = os.path.join(base_dir, "assets", "regions.json")
+    from core.database import get_regions_json_path
+    json_path = get_regions_json_path()
     if os.path.exists(json_path):
         try:
             with open(json_path, "r", encoding="utf-8") as f:

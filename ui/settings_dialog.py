@@ -171,9 +171,8 @@ class SettingsDialog(QDialog):
         self.setWindowFlags(Qt.Dialog | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
         self.app_settings = AppSettings()
         self.db_manager = db_manager or DatabaseManager()
-        self.regions_file_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "regions.json"
-        )
+        from core.database import get_regions_json_path
+        self.regions_file_path = get_regions_json_path()
         self.regions_data = {}
         self._load_regions_from_file()
 

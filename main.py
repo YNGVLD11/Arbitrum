@@ -99,6 +99,13 @@ def main():
     splash.show()
     app.processEvents()
 
+    # Close PyInstaller bootloader splash screen if active
+    try:
+        import pyi_splash
+        pyi_splash.close()
+    except Exception:
+        pass
+
     window = MainWindow()
     if not icon.isNull():
         window.setWindowIcon(icon)

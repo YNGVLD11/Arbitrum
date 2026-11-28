@@ -9,7 +9,7 @@ import tempfile
 from PySide6.QtCore import QObject, Signal, QThread
 from PySide6.QtWidgets import QApplication
 
-CURRENT_VERSION = "v1.4.2"
+CURRENT_VERSION = "v1.4.3"
 GITHUB_REPO = "YNGVLD11/Arbitrum"
 LATEST_RELEASE_WEB_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -91,9 +91,12 @@ class CheckUpdateThread(QThread):
 
 
 class DownloadUpdateThread(QThread):
-    """Фоновый поток скачивания нового исполняемого файла с прогрессом и увеличенным буфером."""
-    progress = Signal(int)  # 0 to 100
-    download_finished = Signal(str)  # temp_file_path
+    """
+    Фоновый поток скачивания нового исполняемого файла с увеличенным буфером.
+    Передает прогресс в процентах, скачанных МБ и общем размере МБ.
+    """
+    progress = Signal(int, float, float)  # percent (0..100), downloaded_mb, total_mb
+    download_finished = Signal(str)  # final_file_path
     download_failed = Signal(str)
 
     def __init__(self, download_url: str):
@@ -104,11 +107,15 @@ class DownloadUpdateThread(QThread):
         try:
             temp_dir = tempfile.gettempdir()
             target_path = os.path.join(temp_dir, "arbitrum_new_version.exe")
-            if os.path.exists(target_path):
-                try:
-                    os.remove(target_path)
-                except Exception:
-                    pass
+            part_path = target_path + ".part"
+
+            # Очищаем старые остаточные файлы
+            for p in (part_path, target_path):
+                if os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except Exception:
+                        pass
 
             req = urllib.request.Request(
                 self.download_url,
@@ -116,25 +123,42 @@ class DownloadUpdateThread(QThread):
             )
             with urllib.request.urlopen(req, timeout=60) as resp:
                 total_size = int(resp.headers.get("content-length", 0))
+                total_mb = round(total_size / (1024 * 1024), 1) if total_size > 0 else 0.0
                 downloaded = 0
                 block_size = 524288  # 512 КБ для быстрой потоковой загрузки
 
-                with open(target_path, "wb") as f:
+                with open(part_path, "wb") as f:
                     while True:
                         buffer = resp.read(block_size)
                         if not buffer:
                             break
                         downloaded += len(buffer)
                         f.write(buffer)
+                        dl_mb = round(downloaded / (1024 * 1024), 1)
                         if total_size > 0:
                             percent = int((downloaded / total_size) * 100)
-                            self.progress.emit(min(percent, 99))
+                            self.progress.emit(min(percent, 99), dl_mb, total_mb)
+                        else:
+                            self.progress.emit(0, dl_mb, 0.0)
 
             # Проверка целостности файла
             if total_size > 0 and downloaded < total_size:
+                if os.path.exists(part_path):
+                    try:
+                        os.remove(part_path)
+                    except Exception:
+                        pass
                 raise RuntimeError(f"Файл загружен не полностью ({downloaded} из {total_size} байт).")
 
-            self.progress.emit(100)
+            # Переименовываем проверенный .part в целевой .exe
+            if os.path.exists(target_path):
+                try:
+                    os.remove(target_path)
+                except Exception:
+                    pass
+            os.replace(part_path, target_path)
+
+            self.progress.emit(100, total_mb, total_mb)
             self.download_finished.emit(target_path)
         except Exception as e:
             self.download_failed.emit(str(e))
@@ -171,6 +195,7 @@ if errorlevel 1 (
     timeout /t 1 /nobreak > nul
     goto retry_replace
 )
+timeout /t 1 /nobreak > nul
 
 start "" "{current_exe}"
 del "%~f0" >nul 2>&1

@@ -1090,7 +1090,7 @@ class SettingsDialog(QDialog):
 
         self.btn_apply_update.setEnabled(False)
         self.btn_check_update.setEnabled(False)
-        self.lbl_update_status.setText("Загрузка обновления (0%)...")
+        self.lbl_update_status.setText("Подготовка к скачиванию...")
         self.lbl_update_status.setStyleSheet("color: #2563EB; font-size: 12px;")
 
         self.dl_thread = DownloadUpdateThread(self._update_download_url)
@@ -1099,8 +1099,11 @@ class SettingsDialog(QDialog):
         self.dl_thread.download_failed.connect(self._on_download_failed)
         self.dl_thread.start()
 
-    def _on_download_progress(self, percent: int):
-        self.lbl_update_status.setText(f"Загрузка обновления ({percent}%)...")
+    def _on_download_progress(self, percent: int, downloaded_mb: float, total_mb: float):
+        if total_mb > 0:
+            self.lbl_update_status.setText(f"Загрузка обновления: <b>{downloaded_mb:.1f} МБ</b> из <b>{total_mb:.1f} МБ</b> ({percent}%)")
+        else:
+            self.lbl_update_status.setText(f"Загрузка обновления: <b>{downloaded_mb:.1f} МБ</b>...")
 
     def _on_download_finished(self, temp_path: str):
         self.lbl_update_status.setText("Обновление скачано! Перезапуск приложения...")

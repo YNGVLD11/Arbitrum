@@ -392,6 +392,20 @@ QPushButton#dangerButton:hover {{
     border-color: #FDA4AF;
 }}
 
+QPushButton#rowDelBtn {{
+    background-color: #FFF1F2;
+    color: #E11D48;
+    border: 1px solid #FECDD3;
+    border-radius: 8px;
+    padding: 0px;
+    min-height: 0px;
+}}
+
+QPushButton#rowDelBtn:hover {{
+    background-color: #FFE4E6;
+    border-color: #FDA4AF;
+}}
+
 /* Compact Tool Icon Buttons (Up, Down, Gear) - Explicit 0 padding */
 QPushButton#toolIconBtn, QPushButton#iconButton {{
     background-color: #FFFFFF;
@@ -1120,6 +1134,20 @@ QPushButton#dangerButton {{
 }}
 
 QPushButton#dangerButton:hover {{
+    background-color: #FFCCD5;
+    border-color: #FF758F;
+}}
+
+QPushButton#rowDelBtn {{
+    background-color: rgba(255, 240, 243, 0.95);
+    color: #C9184A;
+    border: 1px solid #FFCCD5;
+    border-radius: 8px;
+    padding: 0px;
+    min-height: 0px;
+}}
+
+QPushButton#rowDelBtn:hover {{
     background-color: #FFCCD5;
     border-color: #FF758F;
 }}
@@ -1860,6 +1888,20 @@ QPushButton#dangerButton:hover {{
     border-color: #FDA4AF;
 }}
 
+QPushButton#rowDelBtn {{
+    background-color: #FFF1F2;
+    color: #E11D48;
+    border: 1px solid #FECDD3;
+    border-radius: 8px;
+    padding: 0px;
+    min-height: 0px;
+}}
+
+QPushButton#rowDelBtn:hover {{
+    background-color: #FFE4E6;
+    border-color: #FDA4AF;
+}}
+
 /* Compact Tool Icon Buttons (Up, Down, Gear) - Explicit 0 padding */
 QPushButton#toolIconBtn, QPushButton#iconButton {{
     background-color: #FFFFFF;
@@ -2585,6 +2627,20 @@ QPushButton#dangerButton {{
 }}
 
 QPushButton#dangerButton:hover {{
+    background-color: #FFE4E6;
+    border-color: #FDA4AF;
+}}
+
+QPushButton#rowDelBtn {{
+    background-color: #FFF1F2;
+    color: #E11D48;
+    border: 1px solid #FECDD3;
+    border-radius: 8px;
+    padding: 0px;
+    min-height: 0px;
+}}
+
+QPushButton#rowDelBtn:hover {{
     background-color: #FFE4E6;
     border-color: #FDA4AF;
 }}

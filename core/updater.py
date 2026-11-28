@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 from PySide6.QtCore import QObject, Signal, QThread
 
-CURRENT_VERSION = "v1.4.0"
+CURRENT_VERSION = "v1.4.1"
 GITHUB_REPO = "YNGVLD11/Arbitrum"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -108,9 +108,21 @@ def restart_and_replace(new_exe_path: str):
     bat_content = f"""@echo off
 chcp 65001 > nul
 echo Ожидание завершения работы приложения...
-timeout /t 2 /nobreak > nul
-echo Замена файла...
-move /y "{new_exe_path}" "{current_exe}"
+:wait_loop
+tasklist /fi "pid eq {os.getpid()}" 2>nul | find "{os.getpid()}" >nul
+if not errorlevel 1 (
+    timeout /t 1 /nobreak > nul
+    goto wait_loop
+)
+timeout /t 1 /nobreak > nul
+
+:retry_move
+move /y "{new_exe_path}" "{current_exe}" >nul 2>&1
+if errorlevel 1 (
+    timeout /t 1 /nobreak > nul
+    goto retry_move
+)
+
 echo Запуск обновленного приложения...
 start "" "{current_exe}"
 del "%~f0"

@@ -876,16 +876,20 @@ class SettingsDialog(QDialog):
         if not zip_path:
             return
 
-        confirm = QMessageBox.warning(
-            self,
-            "Подтверждение восстановления",
+        box = QMessageBox(self)
+        box.setWindowTitle("Подтверждение восстановления")
+        box.setIcon(QMessageBox.Warning)
+        box.setText(
             "Внимание! Восстановление из резервной копии заменит текущую картотеку должников "
             "данными из выбранного архива.\n\n"
-            "Вы уверены, что хотите продолжить?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            "Вы уверены, что хотите продолжить?"
         )
-        if confirm != QMessageBox.Yes:
+        btn_yes = box.addButton("Да, восстановить", QMessageBox.YesRole)
+        btn_no = box.addButton("Отмена", QMessageBox.NoRole)
+        box.setDefaultButton(btn_no)
+        box.exec()
+
+        if box.clickedButton() != btn_yes:
             return
 
         try:
@@ -943,16 +947,20 @@ class SettingsDialog(QDialog):
         if not zip_path:
             return
 
-        confirm = QMessageBox.warning(
-            self,
-            "Подтверждение восстановления",
+        box = QMessageBox(self)
+        box.setWindowTitle("Подтверждение восстановления")
+        box.setIcon(QMessageBox.Warning)
+        box.setText(
             "Внимание! Восстановление из резервной копии заменит текущую картотеку должников "
             "данными из выбранного архива.\n\n"
-            "Вы уверены, что хотите продолжить?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            "Вы уверены, что хотите продолжить?"
         )
-        if confirm != QMessageBox.Yes:
+        btn_yes = box.addButton("Да, восстановить", QMessageBox.YesRole)
+        btn_no = box.addButton("Отмена", QMessageBox.NoRole)
+        box.setDefaultButton(btn_no)
+        box.exec()
+
+        if box.clickedButton() != btn_yes:
             return
 
         try:

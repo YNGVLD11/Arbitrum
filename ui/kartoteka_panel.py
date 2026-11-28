@@ -768,13 +768,17 @@ class KartotekaPanel(QWidget):
             return
         debtor_id = self.selected_debtor["id"]
         name = self.selected_debtor.get("full_name", "должника")
-        ans = QMessageBox.question(
-            self,
-            "Удаление должника",
-            f"Вы уверены, что хотите удалить карточку:\n{name} (ID {debtor_id})?",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        if ans == QMessageBox.Yes:
+        
+        box = QMessageBox(self)
+        box.setWindowTitle("Удаление должника")
+        box.setIcon(QMessageBox.Question)
+        box.setText(f"Вы уверены, что хотите удалить карточку:\n{name}?")
+        btn_yes = box.addButton("Да", QMessageBox.YesRole)
+        btn_no = box.addButton("Нет", QMessageBox.NoRole)
+        box.setDefaultButton(btn_no)
+        box.exec()
+
+        if box.clickedButton() == btn_yes:
             self.db_manager.delete_debtor(debtor_id)
             self.refresh_table()
 
@@ -803,13 +807,16 @@ class KartotekaPanel(QWidget):
             return
 
         debtor_fio = self.selected_debtor.get("full_name", "").strip() or "Без имени"
-        ans = QMessageBox.question(
-            self,
-            "Экспорт данных",
-            f"Экспортировать данные о должнике {debtor_fio}?",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        if ans != QMessageBox.Yes:
+        box = QMessageBox(self)
+        box.setWindowTitle("Экспорт данных")
+        box.setIcon(QMessageBox.Question)
+        box.setText(f"Экспортировать данные о должнике {debtor_fio}?")
+        btn_yes = box.addButton("Да", QMessageBox.YesRole)
+        btn_no = box.addButton("Нет", QMessageBox.NoRole)
+        box.setDefaultButton(btn_yes)
+        box.exec()
+
+        if box.clickedButton() != btn_yes:
             return
 
         default_name = f"должник_{debtor_fio}.txt"

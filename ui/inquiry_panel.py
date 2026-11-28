@@ -1,12 +1,12 @@
 import os
 import json
-from PySide6.QtCore import Qt, Signal, QObject, QEvent, QPoint
+from PySide6.QtCore import Qt, Signal, QObject, QEvent, QPoint, QSize
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QLineEdit, QComboBox, QCheckBox, QRadioButton, QButtonGroup, QScrollArea,
-    QFrame, QFileDialog, QMessageBox, QProgressBar, QToolTip, QCompleter
+    QFrame, QFileDialog, QMessageBox, QProgressBar, QToolTip, QCompleter, QStyle
 )
-from PySide6.QtGui import QCursor
+from PySide6.QtGui import QCursor, QIcon
 from ui.themes import THEME_FEMININE
 from core.court_parser import CourtParserWorker, parse_court_decision, inflect_fio, to_nomn_fio
 from core.inquiry_generator import TEMPLATES_CONFIG, generate_inquiries
@@ -126,11 +126,20 @@ class CreditorRowWidget(QWidget):
         self.edit_inn.setText(inn_str)
         self.edit_inn.setFixedWidth(110)
 
-        self.btn_del = QPushButton("✕", self)
+        self.btn_del = QPushButton(self)
         self.btn_del.setToolTip("Удалить кредитора")
-        self.btn_del.setFixedSize(26, 26)
-        self.btn_del.setObjectName("dangerButton")
+        self.btn_del.setFixedSize(36, 36)
+        self.btn_del.setObjectName("rowDelBtn")
         self.btn_del.setCursor(Qt.PointingHandCursor)
+        
+        # Лаконичная векторная иконка крестика
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "icons", "cross_red.png")
+        if os.path.exists(icon_path):
+            self.btn_del.setIcon(QIcon(icon_path))
+            self.btn_del.setIconSize(QSize(12, 12))
+        else:
+            self.btn_del.setText("✕")
+
         self.btn_del.clicked.connect(lambda: self.deleted.emit(self))
 
         layout.addWidget(self.edit_name, stretch=3)

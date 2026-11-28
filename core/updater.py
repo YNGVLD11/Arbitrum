@@ -9,7 +9,7 @@ import tempfile
 from PySide6.QtCore import QObject, Signal, QThread
 from PySide6.QtWidgets import QApplication
 
-CURRENT_VERSION = "v1.4.6"
+CURRENT_VERSION = "v1.4.7"
 GITHUB_REPO = "YNGVLD11/Arbitrum"
 LATEST_RELEASE_WEB_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"

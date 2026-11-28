@@ -166,9 +166,9 @@ class DownloadUpdateThread(QThread):
 
 def restart_and_replace(new_exe_path: str):
     """
-    Запускает полностью бесшумный фоновый скрипт Windows Script Host (wscript.exe)
-    для безопасной замены exe и перезапуска.
-    Исключает появление любых черных окон консоли (cmd/find).
+    Запускает нативный скомпилированный Windows-помощник (updater.exe).
+    Он отвязан от родительского процесса, работает без окон (target: winexe),
+    ждет завершения основного процесса, снимает метку Zone.Identifier и перезапускает exe.
     """
     if not getattr(sys, "frozen", False):
         raise RuntimeError("Приложение запущено из исходного кода Python. Обновление .exe доступно только для скомпилированной версии.")
@@ -176,51 +176,49 @@ def restart_and_replace(new_exe_path: str):
     current_exe = os.path.abspath(sys.argv[0])
     current_pid = os.getpid()
 
-    # VBScript выполняется через wscript.exe, у которого принципиально нет консоли.
-    # Он ждет завершения процесса по WMI, заменяет файл с проверкой и запускает обновленный .exe.
-    vbs_content = f'''Set WshShell = CreateObject("WScript.Shell")
-Set objWMIService = GetObject("winmgmts:\\\\.\\root\\cimv2")
-
-Do
-    Set colProcesses = objWMIService.ExecQuery("Select * from Win32_Process Where ProcessId = {current_pid}")
-    If colProcesses.Count = 0 Then Exit Do
-    WScript.Sleep 300
-Loop
-
-WScript.Sleep 600
-
-Set fso = CreateObject("Scripting.FileSystemObject")
-attempts = 0
-Do While attempts < 25
-    On Error Resume Next
-    fso.CopyFile "{new_exe_path}", "{current_exe}", True
-    If Err.Number = 0 Then
-        fso.DeleteFile "{new_exe_path}", True
-        Exit Do
-    End If
-    On Error GoTo 0
-    WScript.Sleep 400
-    attempts = attempts + 1
-Loop
-
-WScript.Sleep 300
-WshShell.Run """" & "{current_exe}" & """", 1, False
-
-On Error Resume Next
-fso.DeleteFile WScript.ScriptFullName, True
-'''
+    # Извлекаем встроенный updater.exe из пакета или assets во временную папку
     temp_dir = tempfile.gettempdir()
-    vbs_path = os.path.join(temp_dir, "arbitrum_updater.vbs")
-    with open(vbs_path, "w", encoding="cp1251") as f:
-        f.write(vbs_content)
+    updater_exe = os.path.join(temp_dir, "arbitrum_updater_native.exe")
 
-    # 0x00000008 = DETACHED_PROCESS, 0x08000000 = CREATE_NO_WINDOW
+    # Ищем updater.exe в ресурсах PyInstaller или локальной папке assets
+    base_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    source_updater = os.path.join(base_dir, "assets", "updater.exe")
+
+    if os.path.exists(source_updater):
+        import shutil
+        shutil.copyfile(source_updater, updater_exe)
+    else:
+        # Fallback: если файла нет в assets, компилируем его на лету через csc.exe
+        csc_path = r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+        if os.path.exists(csc_path):
+            src_file = os.path.join(temp_dir, "Updater.cs")
+            with open(src_file, "w", encoding="utf-8") as f:
+                f.write("""using System; using System.Diagnostics; using System.IO; using System.Runtime.InteropServices; using System.Threading;
+namespace U { class P {
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern bool DeleteFile(string n);
+    static void Main(string[] a) {
+        if (a.Length < 3) return;
+        int pid; int.TryParse(a[0], out pid); string n = a[1], c = a[2];
+        if (pid > 0) { try { Process p = Process.GetProcessById(pid); if (!p.HasExited) p.WaitForExit(10000); } catch {} }
+        Thread.Sleep(800);
+        try { DeleteFile(n + ":Zone.Identifier"); } catch {}
+        for (int i = 0; i < 30; i++) { try { File.Copy(n, c, true); break; } catch { Thread.Sleep(300); } }
+        try { if (File.Exists(n)) File.Delete(n); } catch {}
+        try { DeleteFile(c + ":Zone.Identifier"); } catch {}
+        Thread.Sleep(500);
+        try { ProcessStartInfo psi = new ProcessStartInfo(c); psi.WorkingDirectory = Path.GetDirectoryName(c); psi.UseShellExecute = true; Process.Start(psi); } catch {}
+    }
+}}""")
+            subprocess.run([csc_path, "/target:winexe", "/optimize+", f"/out:{updater_exe}", src_file], capture_output=True)
+
+    # Запускаем нативный updater.exe
     flags = 0
     if os.name == "nt":
+        # 0x08000008 = DETACHED_PROCESS | CREATE_NO_WINDOW
         flags = 0x08000008
 
     subprocess.Popen(
-        ["wscript.exe", vbs_path],
+        [updater_exe, str(current_pid), new_exe_path, current_exe],
         creationflags=flags,
         close_fds=True
     )
